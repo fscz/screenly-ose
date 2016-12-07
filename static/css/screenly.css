@@ -1,6 +1,7 @@
 body {
   margin-top: 60px;
-  margin-bottom: 60px; }
+  margin-bottom: 60px;
+}
 
 .splash {
   margin-top: 0px; }
@@ -24,7 +25,8 @@ body {
     font-size: 15px; }
 .navbar .container li.update-available a {
   font-weight: bold;
-  text-shadow: #555555 0px 1px 1px !important; }
+  text-shadow: #555555 0px 1px 1px !important; 
+}
 
 #footer {
   height: 40px;
@@ -196,3 +198,48 @@ input[name="file_upload"] {
   position: relative;
   margin-top: -252px;
   width: 250px; }
+
+#tab-browse.tab-pane > fieldset > .path {  
+  
+  margin-bottom: 10px;
+  padding: 5px;
+  border: 1px solid gray;
+  display: block;
+}
+
+#tab-browse.tab-pane > fieldset > ul.files {    
+  height: 300px;
+  overflow-y: scroll;
+  list-style-type: none;  
+  border: 1px solid #0678f9;  
+  display: block;
+  margin: 0;
+  padding: 0;
+}
+
+#tab-browse.tab-pane > fieldset > ul.files > li {  
+  padding-top: 5px;
+  padding-bottom: 5px;
+  padding-left: 5px;
+  padding-right: 5px;  
+  border-bottom: 1px solid gray; 
+  cursor: pointer;
+}
+
+#tab-browse.tab-pane > fieldset > ul.files > li:hover {  
+  background: #0678f9;
+}
+
+#tab-browse.tab-pane > fieldset > ul.files > li > img.dir {  
+  content:url(/static/img/dir.png);
+  width: 20px;
+  height: 20px;
+  padding-right: 5px;
+}
+
+#tab-browse.tab-pane > fieldset > ul.files > li > img.file {  
+  content:url(/static/img/file.png);
+  width: 20px;
+  height: 20px;
+  padding-right: 5px;
+}
