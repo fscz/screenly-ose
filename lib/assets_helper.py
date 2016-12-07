@@ -2,10 +2,9 @@ import db
 import queries
 import datetime
 
-FIELDS = ["asset_id", "name", "uri", "start_date",
-          "end_date", "duration", "mimetype", "is_enabled", "nocache", "play_order"]
+FIELDS = ["asset_id", "name", "uri", "duration", "mimetype", "is_enabled", "play_order", "options"]
 
-create_assets_table = 'CREATE TABLE assets(asset_id text primary key, name text, uri text, md5 text, start_date timestamp, end_date timestamp, duration text, mimetype text, is_enabled integer default 0, nocache integer default 0, play_order integer default 0)'
+create_assets_table = 'CREATE TABLE assets(asset_id text primary key, name text, uri text, duration integer, mimetype text, is_enabled integer default 0, nocache integer default 0, play_order integer default 0, options text)'
 
 
 # Note all times are naive for legacy reasons but always UTC.
@@ -28,9 +27,8 @@ def is_active(asset, at_time=None):
 
     """
 
-    if asset['is_enabled'] and asset['start_date'] and asset['end_date']:
-        at = at_time or get_time()
-        return asset['start_date'] < at < asset['end_date']
+    if asset['is_enabled']:
+        return True
     return False
 
 

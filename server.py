@@ -8,12 +8,13 @@ __license__ = "Dual License: GPLv2 and Commercial License"
 from datetime import datetime, timedelta
 from functools import wraps
 from hurry.filesize import size
-from os import path, makedirs, statvfs, mkdir, getenv
+from os import path, makedirs, statvfs, mkdir, getenv, listdir
 from sh import git
 import sh
 from subprocess import check_output
 import json
 import os
+import stat
 import traceback
 import uuid
 
@@ -31,6 +32,7 @@ from lib.utils import get_node_ip
 from lib.utils import validate_url
 from lib.utils import url_fails
 from lib.utils import get_video_duration
+from lib.utils import get_mimetype
 from dateutil import parser as date_parser
 
 from settings import settings, DEFAULTS, CONFIGURABLE_SETTINGS
@@ -41,7 +43,7 @@ from werkzeug.wrappers import Request
 
 
 def make_json_response(obj):
-    response.content_type = "application/json"
+    response.content_type = "application/json"    
     return json_dump(obj)
 
 
@@ -133,9 +135,10 @@ def prepare_asset(request):
             'asset_id': get('asset_id'),
             'is_enabled': get('is_enabled'),
             'nocache': get('nocache'),
-        }
+        }        
 
-        uri = get('uri') or False
+        uri = get('uri') or False  
+        print(asset, uri)
 
         if not asset['asset_id']:
             asset['asset_id'] = uuid.uuid4().hex
@@ -176,17 +179,6 @@ def prepare_asset(request):
             # Crashes if it's not an int. We want that.
             asset['duration'] = int(get('duration'))
 
-        # parse date via python-dateutil and remove timezone info
-        if get('start_date'):
-            asset['start_date'] = date_parser.parse(get('start_date')).replace(tzinfo=None)
-        else:
-            asset['start_date'] = ""
-
-        if get('end_date'):
-            asset['end_date'] = date_parser.parse(get('end_date')).replace(tzinfo=None)
-        else:
-            asset['end_date'] = ""
-
         if not asset['asset_id']:
             raise Exception
 
@@ -197,6 +189,56 @@ def prepare_asset(request):
     else:
         raise Exception("Not enough information provided. Please specify 'name', 'uri', and 'mimetype'.")
 
+
+def get_file_info(file, path):
+    full_path = os.path.join(path, file)
+    stat_info = os.stat(full_path)
+
+    acc = dict()
+    acc['name'] = file
+    acc['path'] = full_path
+    acc['creation'] = stat_info.st_ctime
+    acc['modification'] = stat_info.st_mtime
+    acc['access'] = stat_info.st_atime
+    acc['size'] = stat_info.st_size
+
+    if stat.S_ISDIR(stat_info.st_mode):
+        acc['mime'] = 'dir'
+    elif stat.S_ISREG(stat_info.st_mode):
+        mime = get_mimetype(full_path)
+        if mime is not None:
+            acc['mime'] = mime
+
+    return acc
+
+def file_info_cmp(info1, info2):
+    if info1['mime'] == info2['mime']:    
+        return info1['name'] < info2['name']
+    elif info1['mime'] == 'dir' and not info2['mime'] == 'dir':
+        return -1
+    else:
+        return 1
+
+@route('/api/filesystem<path:path>', method="GET")
+def api_filesystem(path):
+    try:
+        contents = [{
+            'name': '..'
+            , 'path': os.path.abspath(os.path.join(path, '..'))
+            , 'mime': 'dir'
+            , 'creation': 0
+            , 'modification': 0
+            , 'access': 0
+            , 'size': 0
+        }] + sorted(
+                filter(
+                    lambda info: 'mime' in info and not info['name'].startswith('.'), 
+                        [get_file_info(f, path) for f in listdir(path)]), cmp=file_info_cmp)
+
+        return make_json_response(contents)
+    except Exception as e:
+        traceback.print_exc()
+        return api_error(unicode(e))    
 
 @route('/api/assets', method="GET")
 def api_assets():

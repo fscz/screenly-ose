@@ -2,7 +2,8 @@
 # -*- coding: utf-8 -*-
 
 from datetime import datetime, timedelta
-from os import path, getenv, utime
+from os import path, getenv, utime, listdir
+import os
 from platform import machine
 from random import shuffle
 from requests import get as req_get
@@ -11,10 +12,11 @@ from json import load as json_load
 from signal import signal, SIGUSR1, SIGUSR2
 import logging
 import sh
+import urllib
 
 from settings import settings
 import html_templates
-from lib.utils import url_fails
+from lib.utils import url_fails, get_mimetype
 from lib import db
 from lib import assets_helper
 
@@ -96,17 +98,17 @@ class Scheduler(object):
     def update_playlist(self):
         logging.debug('update_playlist')
         self.last_update_db_mtime = self.get_db_mtime()
-        (new_assets, new_deadline) = generate_asset_list()
-        if new_assets == self.assets and new_deadline == self.deadline:
+        new_assets = generate_asset_list()
+        if new_assets == self.assets:
             # If nothing changed, don't disturb the current play-through.
             return
 
-        self.assets, self.deadline = new_assets, new_deadline
+        self.assets = new_assets
         self.counter = 0
         # Try to keep the same position in the play list. E.g. if a new asset is added to the end of the list, we
         # don't want to start over from the beginning.
         self.index = self.index % len(self.assets) if self.assets else 0
-        logging.debug('update_playlist done, count %s, counter %s, index %s, deadline %s', len(self.assets), self.counter, self.index, self.deadline)
+        logging.debug('update_playlist done, count %s, counter %s, index %s', len(self.assets), self.counter, self.index)
 
     def get_db_mtime(self):
         # get database file last modification time
@@ -117,22 +119,15 @@ class Scheduler(object):
 
 
 def generate_asset_list():
-    """Choose deadline via:
-        1. Map assets to deadlines with rule: if asset is active then 'end_date' else 'start_date'
-        2. Get nearest deadline
-    """
     logging.info('Generating asset-list...')
     assets = assets_helper.read(db_conn)
-    deadlines = [asset['end_date'] if assets_helper.is_active(asset) else asset['start_date'] for asset in assets]
 
     playlist = filter(assets_helper.is_active, assets)
-    deadline = sorted(deadlines)[0] if len(deadlines) > 0 else None
-    logging.debug('generate_asset_list deadline: %s', deadline)
 
     if settings['shuffle_playlist']:
         shuffle(playlist)
 
-    return playlist, deadline
+    return playlist
 
 
 def watchdog():
@@ -179,12 +174,11 @@ def browser_send(command, cb=lambda _: True):
         load_browser()
 
 
-def browser_clear(force=False):
+def browser_clear():
     """Load a black page. Default cb waits for the page to load."""
-    browser_url('file://' + BLACK_PAGE, force=force, cb=lambda buf: 'LOAD_FINISH' in buf and BLACK_PAGE in buf)
+    browser_send('uri ' + 'file://' + BLACK_PAGE, cb=lambda buf: 'LOAD_FINISH' in buf and BLACK_PAGE in buf)
 
-
-def browser_url(url, cb=lambda _: True, force=False):
+def view_url(url, asset, cb=lambda _: True, force=False):
     global current_browser_url
 
     if url == current_browser_url and not force:
@@ -194,13 +188,21 @@ def browser_url(url, cb=lambda _: True, force=False):
         browser_send('uri ' + current_browser_url, cb=cb)
         logging.info('current url is %s', current_browser_url)
 
+    duration = int(asset['duration'])
+    logging.info('Sleeping for %s', duration)
+    sleep(duration)
 
-def view_image(uri):
+
+def view_image(uri, duration):
+    uri = urllib.quote(uri)
+    logging.info("view_image: %s" % uri)
     browser_clear()
     browser_send('js window.setimg("{0}")'.format(uri), cb=lambda b: 'COMMAND_EXECUTED' in b and 'setimg' in b)
+    logging.info('Sleeping for %s', duration)
+    sleep(duration)
 
-
-def view_video(uri, duration):
+def view_video(uri, asset):
+    duration = asset['duration']
     logging.debug('Displaying video %s for %s ', uri, duration)
 
     if arch in ('armv6l', 'armv7l'):
@@ -223,6 +225,29 @@ def view_video(uri, duration):
     if run.exit_code == 124:
         logging.error('omxplayer timed out')
 
+def view_directory(uri, asset):    
+    duration = int(asset['duration'])
+    def is_image(f):
+        if path.isfile(f):
+            mime = get_mimetype(f)
+            if mime is not None and 'image' in mime:
+                return True
+        return False
+    images = [path.join(uri, f) for f in os.listdir(uri) if is_image(path.join(uri, f))]
+    if len(images) > 0:
+        image_duration=5.0
+        while True:            
+            shuffle(images)
+            image = images[0]
+
+            duration -= image_duration
+
+            view_image(image, image_duration)            
+
+            if duration > 0:
+                sleep(image_duration)
+            else:
+                break
 
 def check_update():
     """
@@ -268,39 +293,46 @@ def load_settings():
     logging.getLogger().setLevel(logging.DEBUG if settings['debug_logging'] else logging.INFO)
 
 
-def asset_loop(scheduler):
-    check_update()
-    asset = scheduler.get_next_asset()
+def process_playlist(scheduler):
+    logging.debug('Start playlist loop.')
+    while True:
+        check_update()
+        asset = scheduler.get_next_asset()
 
-    if asset is None:
-        logging.info('Playlist is empty. Sleeping for %s seconds', EMPTY_PL_DELAY)
-        view_image(HOME + LOAD_SCREEN)
-        sleep(EMPTY_PL_DELAY)
+        if asset is None:
+            logging.info('Playlist is empty. Sleeping for %s seconds', EMPTY_PL_DELAY)
+            view_image(HOME + LOAD_SCREEN, EMPTY_PL_DELAY)
 
-    elif path.isfile(asset['uri']) or not url_fails(asset['uri']):
-        name, mime, uri = asset['name'], asset['mimetype'], asset['uri']
-        logging.info('Showing asset %s (%s)', name, mime)
-        logging.debug('Asset URI %s', uri)
-        watchdog()
+        elif path.isfile(asset['uri']) or not url_fails(asset['uri']):
+            name, mime, uri = asset['name'], asset['mimetype'], asset['uri']
+            logging.info('Showing asset %s (%s)', name, mime)
+            logging.debug('Asset URI %s', uri)
+            watchdog()
 
-        if 'image' in mime:
-            view_image(uri)
-        elif 'web' in mime:
-            # FIXME If we want to force periodic reloads of repeated web assets, force=True could be used here.
-            # See e38e6fef3a70906e7f8739294ffd523af6ce66be.
-            browser_url(uri)
-        elif 'video' in mime:
-            view_video(uri, asset['duration'])
+
+            if 'image' in mime:
+                duration = int(asset['duration'])
+                view_image(uri, duration)
+            elif 'webpage' == mime:
+                # FIXME If we want to force periodic reloads of repeated web assets, force=True could be used here.
+                # See e38e6fef3a70906e7f8739294ffd523af6ce66be.
+                view_url(uri, asset)
+            elif 'video' in mime:
+                view_video(uri, asset)
+
+            elif uri.startswith('/'): # local file
+                if 'dir' == mime:
+                    view_directory(uri, asset)
+                else:
+                    pass
+               
+            else:
+                logging.error('Unknown MimeType %s', mime)
+                sleep(0.5)
+
         else:
-            logging.error('Unknown MimeType %s', mime)
-
-        if 'image' in mime or 'web' in mime:
-            duration = int(asset['duration'])
-            logging.info('Sleeping for %s', duration)
-            sleep(duration)
-    else:
-        logging.info('Asset %s at %s is not available, skipping.', asset['name'], asset['uri'])
-        sleep(0.5)
+            logging.info('Asset %s at %s is not available, skipping.', asset['name'], asset['uri'])
+            sleep(0.5)
 
 
 def setup():
@@ -327,10 +359,9 @@ def main():
     if settings['show_splash']:
         sleep(SPLASH_DELAY)
 
-    scheduler = Scheduler()
-    logging.debug('Entering infinite loop.')
-    while True:
-        asset_loop(scheduler)
+    scheduler = Scheduler()    
+    
+    process_playlist(scheduler)
 
 
 if __name__ == "__main__":

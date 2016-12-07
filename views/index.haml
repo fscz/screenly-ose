@@ -28,8 +28,6 @@
     %meta(name="msapplication-square310x310logo", content="/static/favicons/mstile-310x310.png")
 
     %link(href="/static/css/bootstrap.css", rel="stylesheet")
-    %link(href="/static/css/datepicker.css", rel="stylesheet")
-    %link(href="/static/css/timepicker.css", rel="stylesheet")
     %link(href="/static/css/toggle-switch.css", rel="stylesheet")
     %link(href="/static/css/screenly.css", rel="stylesheet")
 
@@ -48,10 +46,7 @@
     %script(src="/static/js/jquery.fileupload.js") /needs jqueryui.widget
 
     %script(src="/static/js/bootstrap.min.js") /needs jquery
-    %script(src="/static/js/bootstrap-datepicker.js")
-    %script(src="/static/js/bootstrap-timepicker.js")
 
-    %script(src="/static/js/moment.js")
     %script(src="/static/js/screenly-ose.js")
     %script(src="/static/js/main.js")
 
@@ -61,12 +56,9 @@
         %i.asset-icon
         :plain
           <%= name %>
-      %td(style="width:21%")
+      %td(style="width:42%")
         :plain
-          <%= start_date %>
-      %td(style="width:21%")
-        :plain
-          <%= end_date %>
+          <%= duration %>
       %td.asset_row_btns(style="width:13%")
         %button.edit-asset-button.btn(type="button")
           %i.icon-pencil
@@ -114,6 +106,8 @@
                       %a(href="#tab-uri", dataToggle="tab") URL
                     %li.tabnav-file_upload
                       %a(href="#tab-file_upload", dataToggle="tab") Upload
+                    %li.tabnav-browse
+                      %a(href="#tab-browse", dataToggle="tab") Browse
                   .tab-content
                     #tab-uri.tab-pane.active
                       .control-group.uri
@@ -128,36 +122,24 @@
                             %button.btn Choose file
                             %input(type="file", name="file_upload")
                           #file_upload_label
+                    #tab-browse.tab-pane                        
+                      %fieldset                        
+                        %div.path
+                        %ul.files
+
+                        
             .asset-location.edit(style="display:none")
               %fieldset
                 .control-group
                   %label.control-label Asset Location
                   .controls
                     .uri-text.span4.first
-
+            
             %fieldset
-              .control-group.mimetype
-                %label.control-label Asset Type
-                .controls
-                  %select.mime-select.span2(name="mimetype")
-                    %option(value="image") Image
-                    %option(value="video") Video
-                    %option(value="webpage") Webpage
+              %input(type="hidden", name="mimetype")
 
             %hr
             %fieldset
-              .control-group.start_date
-                %label.control-label Start Date
-                .controls
-                  %input.span2.date(type="text", name="start_date_date")
-                  %input.span2.time(type="text", name="start_date_time")
-                  %input(type="hidden", name="start_date")
-              .control-group.end_date
-                %label.control-label End Date
-                .controls
-                  %input.span2.date(type="text", name="end_date_date")
-                  %input.span2.time(type="text", name="end_date_time")
-                  %input(type="hidden", name="end_date")
               .control-group.duration
                 %label.control-label Duration
                 .controls
@@ -165,22 +147,7 @@
                   seconds
                   &nbsp;
                   %span.muted.zerohint(style="display:none") use 0 to autodetect video length
-              .advanced-accordion.accordion
-                .accordion-group
-                  .accrodion-heading
-                    %i.icon-play.unrotated
-                    %a.advanced-toggle(href="#") Advanced
-                  .collapse-advanced.accordion-body.collapse
-                    .accordion-inner
-                      .control-group
-                        %label.control-label Disable cache
-                        .controls.nocache
-                          %label.nocache-toggle.checkbox.toggle.well
-                            %input(type="checkbox", name="nocache")
-                            %p
-                              %span.on Yes
-                              %span.off No
-                            %a.slide-button.btn.btn-primary
+
 
           .modal-footer
             .pull-left.progress.progress-striped.active(style="display:none")
@@ -255,8 +222,7 @@
               %thead(style="display:none")
                 %tr
                   %th.asset_row_name Name
-                  %th(style="width:21%") Start
-                  %th(style="width:21%") End
+                  %th(style="width:42%") Duration
                   %th(style="width:13%")
                   %th(style="width:7%")
               %tbody#active-assets
@@ -268,8 +234,7 @@
               %thead(style="display:none")
                 %tr
                   %th.asset_row_name Name
-                  %th(style="width:21%") Start
-                  %th(style="width:21%") End
+                  %th(style="width:42%") Duration
                   %th(style="width:13%")
                   %th(style="width:7%")
               %tbody#inactive-assets

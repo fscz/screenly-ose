@@ -2,6 +2,7 @@ import requests
 import json
 import re
 import certifi
+import os
 from netifaces import ifaddresses
 from sh import grep, netstat
 from urlparse import urlparse
@@ -10,6 +11,10 @@ from settings import settings
 from datetime import datetime
 import pytz
 from platform import machine
+
+import magic
+mime = magic.Magic(mime=True)
+import mimetypes
 
 arch = machine()
 
@@ -48,7 +53,7 @@ def validate_url(string):
     """
 
     checker = urlparse(string)
-    return bool(checker.scheme in ('http', 'https') and checker.netloc)
+    return bool(checker.scheme in ('file') or (checker.scheme in ('http', 'https') and checker.netloc))
 
 
 def get_node_ip():
@@ -91,11 +96,20 @@ def get_video_duration(file):
                 if 'ID_LENGTH=' in line:
                     time = timedelta(seconds=int(round(float(line.split('=')[1]))))
                     break
-    except:
+    except Exception as e:        
         pass
 
     return time
 
+def get_mimetype(path):
+    try:
+        return mime.from_file(path)
+    except:
+        mime, encoding = mimetypes.guess_type(path, False)
+        if mime is not None:
+            return mime
+        else:
+            return None
 
 def handler(obj):
     # Set timezone as UTC if it's datetime and format as ISO
@@ -115,41 +129,48 @@ def url_fails(url):
     Try HEAD and GET for URL availability check.
     """
 
-    # Use Certifi module
-    if settings['verify_ssl']:
-        verify = certifi.where()
+    if url.startswith('/'): # it is a local path
+        try:
+            return not os.path.exists(url)
+        except:
+            return True
     else:
-        verify = False
 
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (X11; Linux armv7l) AppleWebKit/538.15 (KHTML, like Gecko) Version/8.0 Safari/538.15',
-    }
-    try:
-        if not validate_url(url):
-            return False
+        # Use Certifi module
+        if settings['verify_ssl']:
+            verify = certifi.where()
+        else:
+            verify = False
 
-        if requests.head(
-            url,
-            allow_redirects=True,
-            headers=headers,
-            timeout=10,
-            verify=verify
-        ).status_code in HTTP_OK:
-            return False
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (X11; Linux armv7l) AppleWebKit/538.15 (KHTML, like Gecko) Version/8.0 Safari/538.15',
+        }
+        try:
+            if not validate_url(url):
+                return False
 
-        if requests.get(
-            url,
-            allow_redirects=True,
-            headers=headers,
-            timeout=10,
-            verify=verify
-        ).status_code in HTTP_OK:
-            return False
+            if requests.head(
+                url,
+                allow_redirects=True,
+                headers=headers,
+                timeout=10,
+                verify=verify
+            ).status_code in HTTP_OK:
+                return False
 
-    except (requests.ConnectionError, requests.exceptions.Timeout):
-        pass
+            if requests.get(
+                url,
+                allow_redirects=True,
+                headers=headers,
+                timeout=10,
+                verify=verify
+            ).status_code in HTTP_OK:
+                return False
 
-    return True
+        except (requests.ConnectionError, requests.exceptions.Timeout):
+            pass
+
+        return True
 
 
 def template_handle_unicode(value):
