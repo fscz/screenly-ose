@@ -252,13 +252,11 @@
       results = [];
       for (k = 0, len = ref.length; k < len; k++) {
         field = ref[k];
-        if (!(!(this.$f(field)).prop('disabled'))) {
-          continue;
+        if (!(this.$f(field)).prop('disabled')) {
+          results.push(this.model.set(field, this.$fv(field), {
+            silent: true
+          }));
         }
-        console.log('field: ' + field + ' value: ' + this.$fv(field));
-        results.push(this.model.set(field, this.$fv(field), {
-          silent: true
-        }));
       }
       return results;
     };
@@ -390,7 +388,7 @@
         })(this),
         file_upload: (function(_this) {
           return function(v) {
-            if (_this.model.isNew() && !v && (that.$('#tab-file-upload')).hasClass('active')) {
+            if (_this.model.isNew() && !v && (that.$('#tab-file_upload')).hasClass('active')) {
               return 'please select a file';
             }
           };
@@ -482,12 +480,15 @@
     };
 
     EditAssetView.prototype.clickFolder = function(e) {
-      var stat;
-      stat = JSON.parse($(e.target).data('stat'));
-      this.$fv('uri', stat['path']);
-      this.$fv('mimetype', stat['mime']);
-      this.validate();
-      return this.updateFolderSelection(stat['path'], stat['mime']);
+      var data_stat, stat;
+      data_stat = $(e.target).data('stat');
+      if (data_stat) {
+        stat = JSON.parse(data_stat);
+        this.$fv('uri', stat['path']);
+        this.$fv('mimetype', stat['mime']);
+        this.validate();
+        return this.updateFolderSelection(stat['path'], stat['mime']);
+      }
     };
 
     EditAssetView.prototype.updateFolderSelection = function(path, mime) {

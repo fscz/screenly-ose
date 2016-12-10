@@ -16,7 +16,7 @@ import urllib
 
 from settings import settings
 import html_templates
-from lib.utils import url_fails, get_mimetype
+from lib.utils import url_fails, get_mimetype, get_video_duration
 from lib import db
 from lib import assets_helper
 
@@ -178,7 +178,7 @@ def browser_clear():
     """Load a black page. Default cb waits for the page to load."""
     browser_send('uri ' + 'file://' + BLACK_PAGE, cb=lambda buf: 'LOAD_FINISH' in buf and BLACK_PAGE in buf)
 
-def view_url(url, asset, cb=lambda _: True, force=False):
+def view_url(url, duration, cb=lambda _: True, force=False):
     global current_browser_url
 
     if url == current_browser_url and not force:
@@ -188,8 +188,7 @@ def view_url(url, asset, cb=lambda _: True, force=False):
         browser_send('uri ' + current_browser_url, cb=cb)
         logging.info('current url is %s', current_browser_url)
 
-    duration = int(asset['duration'])
-    logging.info('Sleeping for %s', duration)
+    logging.info('Sleeping for %s seconds', duration)
     sleep(duration)
 
 
@@ -201,9 +200,8 @@ def view_image(uri, duration):
     logging.info('Sleeping for %s', duration)
     sleep(duration)
 
-def view_video(uri, asset):
-    duration = asset['duration']
-    logging.debug('Displaying video %s for %s ', uri, duration)
+def view_video(uri, duration):
+    logging.info('view_video (%s) for (%s) seconds', uri, duration)
 
     if arch in ('armv6l', 'armv7l'):
         player_args = ['omxplayer', uri]
@@ -214,40 +212,92 @@ def view_video(uri, asset):
         player_kwargs = {'_bg': True}
 
     if duration and duration != 'N/A':
-        player_args = ['timeout', VIDEO_TIMEOUT + int(duration.split('.')[0])] + player_args
+        player_args = ['timeout', VIDEO_TIMEOUT + duration] + player_args
 
     run = sh.Command(player_args[0])(*player_args[1:], **player_kwargs)
 
-    browser_clear(force=True)
+    browser_clear()
     while run.process.alive:
         watchdog()
         sleep(1)
     if run.exit_code == 124:
         logging.error('omxplayer timed out')
 
-def view_directory(uri, asset):    
-    duration = int(asset['duration'])
-    def is_image(f):
-        if path.isfile(f):
-            mime = get_mimetype(f)
-            if mime is not None and 'image' in mime:
-                return True
-        return False
-    images = [path.join(uri, f) for f in os.listdir(uri) if is_image(path.join(uri, f))]
-    if len(images) > 0:
-        image_duration=5.0
+def view_directory(uri, duration, entry_duration=10):    
+    slideshow = [path.join(uri, f) for f in os.listdir(uri) if path.isfile(path.join(uri, f))]
+
+    num_entries = len(slideshow)
+    num = 0
+    if num_entries > 0:
+        shuffle(slideshow)
         while True:            
-            shuffle(images)
-            image = images[0]
-
-            duration -= image_duration
-
-            view_image(image, image_duration)            
-
-            if duration > 0:
-                sleep(image_duration)
+            entry = slideshow[num]
+            mime = get_mimetype(entry)
+            if mime is not None:
+                if 'image' in mime:                
+                    view_image(entry, entry_duration)            
+                    duration -= entry_duration                     
+                elif 'video' in mime:
+                    video_duration = get_video_duration(entry)
+                    view_video(entry, video_duration)
+                    duration -= video_duration                    
+                elif 'text' in mime:                
+                    with open(entry, 'r') as urlfile:
+                        try:
+                            view_url(urlfile.readlines()[0].replace('\n', ''), entry_duration)
+                            duration -= entry_duration                             
+                        except Exception as e:
+                            logging.error('cannot show text file: %s, error: %s' % (entry, e))  
+                else:
+                    logging.info('mimetype (%s) of file (%s) not supported.' % (mime, entry))
             else:
+                logging.info('cannot show suspect file: %s' % entry)
+
+            num = (num+1) % num_entries
+            if duration <= 0:                
                 break
+
+
+def process_playlist(scheduler):
+    logging.debug('Start playlist loop.')
+    while True:
+        check_update()
+        asset = scheduler.get_next_asset()
+
+        if asset is None:
+            logging.info('Playlist is empty. Sleeping for %s seconds', EMPTY_PL_DELAY)
+            view_image(HOME + LOAD_SCREEN, EMPTY_PL_DELAY)
+
+        elif path.isfile(asset['uri']) or not url_fails(asset['uri']):
+            name, mime, uri = asset['name'], asset['mimetype'], asset['uri']
+            logging.info('Asset %s %s (%s)', name, uri, mime)            
+            watchdog()
+
+
+            duration = int(asset['duration'])
+            if 'image' in mime:                
+                view_image(uri, duration)
+            elif 'webpage' == mime:
+                # FIXME If we want to force periodic reloads of repeated web assets, force=True could be used here.
+                # See e38e6fef3a70906e7f8739294ffd523af6ce66be.
+                view_url(uri, asset)
+            elif 'video' in mime:
+                view_video(uri, duration)
+
+            elif uri.startswith('/'): # local file
+                if 'dir' == mime:                    
+                    view_directory(uri, duration)
+                else:
+                    pass
+               
+            else:
+                logging.error('Unknown MimeType %s', mime)
+                sleep(0.5)
+
+        else:
+            logging.info('Asset %s at %s is not available, skipping.', asset['name'], asset['uri'])
+            sleep(0.5)
+
 
 def check_update():
     """
@@ -291,48 +341,6 @@ def load_settings():
     """Load settings and set the log level."""
     settings.load()
     logging.getLogger().setLevel(logging.DEBUG if settings['debug_logging'] else logging.INFO)
-
-
-def process_playlist(scheduler):
-    logging.debug('Start playlist loop.')
-    while True:
-        check_update()
-        asset = scheduler.get_next_asset()
-
-        if asset is None:
-            logging.info('Playlist is empty. Sleeping for %s seconds', EMPTY_PL_DELAY)
-            view_image(HOME + LOAD_SCREEN, EMPTY_PL_DELAY)
-
-        elif path.isfile(asset['uri']) or not url_fails(asset['uri']):
-            name, mime, uri = asset['name'], asset['mimetype'], asset['uri']
-            logging.info('Showing asset %s (%s)', name, mime)
-            logging.debug('Asset URI %s', uri)
-            watchdog()
-
-
-            if 'image' in mime:
-                duration = int(asset['duration'])
-                view_image(uri, duration)
-            elif 'webpage' == mime:
-                # FIXME If we want to force periodic reloads of repeated web assets, force=True could be used here.
-                # See e38e6fef3a70906e7f8739294ffd523af6ce66be.
-                view_url(uri, asset)
-            elif 'video' in mime:
-                view_video(uri, asset)
-
-            elif uri.startswith('/'): # local file
-                if 'dir' == mime:
-                    view_directory(uri, asset)
-                else:
-                    pass
-               
-            else:
-                logging.error('Unknown MimeType %s', mime)
-                sleep(0.5)
-
-        else:
-            logging.info('Asset %s at %s is not available, skipping.', asset['name'], asset['uri'])
-            sleep(0.5)
 
 
 def setup():

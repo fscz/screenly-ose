@@ -11,6 +11,7 @@ from settings import settings
 from datetime import datetime
 import pytz
 from platform import machine
+import logging
 
 import magic
 mime = magic.Magic(mime=True)
@@ -76,10 +77,12 @@ def get_video_duration(file):
     Returns the duration of a video file in timedelta.
     """
     time = None
-    try:
-        if arch in ('armv6l', 'armv7l'):
-            run_omxplayer = omxplayer(file, info=True, _err_to_out=True)
-            for line in run_omxplayer.split('\n'):
+    
+    if arch in ('armv6l', 'armv7l'):
+        try:
+            omxplayer(file, info=True, _err_to_out=True)
+        except Exception as e:
+            for line in ("%s" % e).split('\n'):
                 if 'Duration' in line:
                     match = re.search(r'[0-9]+:[0-9]+:[0-9]+\.[0-9]+', line)
                     if match:
@@ -88,16 +91,17 @@ def get_video_duration(file):
                         hours = int(time_split[0])
                         minutes = int(time_split[1])
                         seconds = float(time_split[2])
-                        time = timedelta(hours=hours, minutes=minutes, seconds=seconds)
+                        time = hours * 3600 + minutes * 60 + seconds
                     break
-        else:
+    else:
+        try: 
             run_mplayer = mplayer('-identify', '-frames', '0', '-nosound', file)
             for line in run_mplayer.split('\n'):
                 if 'ID_LENGTH=' in line:
-                    time = timedelta(seconds=int(round(float(line.split('=')[1]))))
+                    time = int(round(float(line.split('=')[1])))
                     break
-    except Exception as e:        
-        pass
+        except Exception as e:     
+            pass
 
     return time
 

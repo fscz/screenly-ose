@@ -132,8 +132,7 @@ API.View.EditAssetView = class EditAssetView extends Backbone.View
     no
 
   viewmodel: =>
-    for field in @model.fields when not (@$f field).prop 'disabled'
-      console.log('field: '+field+' value: '+@$fv field)
+    for field in @model.fields when not (@$f field).prop 'disabled'      
       @model.set field, (@$fv field), silent:yes
 
   events:
@@ -211,10 +210,11 @@ API.View.EditAssetView = class EditAssetView extends Backbone.View
         if @model.isNew() and ((that.$ '#tab-uri').hasClass 'active') and not url_test v
           'please enter a valid URL'
       file_upload: (v) =>
-        if @model.isNew() and not v and (that.$ '#tab-file-upload').hasClass 'active'
+        if @model.isNew() and not v and (that.$ '#tab-file_upload').hasClass 'active'
           return 'please select a file'
-    errors = ([field, v] for field, fn of validators when v = fn (@$fv field))
 
+    errors = ([field, v] for field, fn of validators when v = fn (@$fv field))
+    
     (@$ ".control-group.warning .help-inline.warning").remove()
     (@$ ".control-group").removeClass 'warning'
     (@$ '[type=submit]').prop 'disabled', no
@@ -287,14 +287,16 @@ API.View.EditAssetView = class EditAssetView extends Backbone.View
       @updateFolderSelection('/', 'dir')
     no
   clickFolder: (e) =>
-    stat = JSON.parse($(e.target).data('stat'))
-    
-    @$fv 'uri', stat['path']
-    @$fv 'mimetype', stat['mime']
+    data_stat = $(e.target).data('stat')
+    if data_stat 
+      stat = JSON.parse(data_stat)
+      
+      @$fv 'uri', stat['path']
+      @$fv 'mimetype', stat['mime']
 
-    @.validate()
+      @.validate()
 
-    @updateFolderSelection(stat['path'], stat['mime'])
+      @updateFolderSelection(stat['path'], stat['mime'])
 
   updateFolderSelection: (path, mime) =>   
     

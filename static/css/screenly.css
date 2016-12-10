@@ -81,7 +81,12 @@ section .header {
   text-transform: uppercase; }
 
 .modal form {
-  margin-bottom: 0; }
+  margin-bottom: 0;   
+}
+
+.tab-content {
+  height: 250px;
+}
 
 .popover .popover-title {
   font-weight: bold; }
@@ -208,10 +213,12 @@ input[name="file_upload"] {
 }
 
 #tab-browse.tab-pane > fieldset > ul.files {    
-  height: 300px;
-  overflow-y: scroll;
+  height: 200px;
+  width: 100%;
+  overflow: scroll;
   list-style-type: none;  
   border: 1px solid #0678f9;  
+  box-sizing: border-box;
   display: block;
   margin: 0;
   padding: 0;
