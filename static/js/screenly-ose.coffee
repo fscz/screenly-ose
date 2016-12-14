@@ -30,7 +30,7 @@ API = (window.Screenly ||= {}) # exports
 
 
 
-get_template = (name) -> _.template ($ "##{name}-template").html()
+get_template = (name) -> _.template ($ "##{name}").html()
 delay = (wait, fn) -> _.delay fn, wait
 
 supported_upload_mimetypes = [ [('jpg jpeg png pnm gif bmp'.split ' '), 'image']
@@ -56,377 +56,506 @@ insertWbr = (v) -> (v.replace /\//g, '/<wbr>').replace /\&/g, '&amp;<wbr>'
 # Tell Backbone to send its saves as JSON-encoded.
 Backbone.emulateJSON = on
 
+
 # Models
-API.Asset = class Asset extends Backbone.Model
-  idAttribute: "asset_id"
-  fields: 'name mimetype uri duration options'.split ' '
+API.Entry = class Entry extends Backbone.Model
+  idAttribute: "id"
+  fields: 'name directory start end'.split ' '
   defaults: =>
     name: ''
-    mimetype: 'webpage'
-    uri: ''
-    is_active: false
-    duration: default_duration
-    is_enabled: 0
-    nocache: 0
-    play_order: 0
-  active: =>
-    return @get('is_enabled') 
+    directory: ''
+    mimetype: ''
+    start: 0
+    end: 0
 
-  backup: =>
-    @backup_attributes = @toJSON()
+API.Entries = class Entries extends Backbone.Collection  
+  model: Entry
+  comparator: (item) ->
+    return parseInt(item.get('start'))
+  url: () -> "/api/schedules/"+@schedule_id+"/entries"
 
-  rollback: =>
-    if @backup_attributes
-      @set @backup_attributes
-      @backup_attributes = undefined
-  old_name: =>
-    if @backup_attributes
-      return @backup_attributes.name
+API.Schedule = class Schedule extends Backbone.Model
+  idAttribute: "id"
+  fields: 'name active'.split ' '
+  defaults: =>
+    name: ''
+    active: false
 
+API.Schedules = class Schedules extends Backbone.Collection  
+  model: Schedule  
+  url: "/api/schedules"
 
-API.Assets = class Assets extends Backbone.Collection
-  url: "/api/assets"
-  model: Asset
-  comparator: 'play_order'
-
+API.Directory = class Directory extends Backbone.Collection
+  url: '/api/directory'
 
 # Views
 API.View = {};
-API.View.EditAssetView = class EditAssetView extends Backbone.View
-  $f: (field) => @$ "[name='#{field}']" # get field element
-  $fv: (field, val...) => (@$f field).val val... # get or set filed value
+class DisposableView extends Backbone.View 
+  close: () =>
+    @unbind()
+    @$el.empty()
+    @undelegateEvents()
 
-  initialize: (options) =>
-    @edit = options.edit
-    ($ 'body').append @$el.html get_template 'asset-modal'
+API.View.TimeView = class TimeView extends DisposableView
+  initialize: (attrs, options) =>
+    that = @
+    @type = options.type
+    @template = $ "<span class='input-group-addon'>
+                    #{options.name}
+                  </span>
+                  <div class='form-control'>
+                  </div>"
 
-    (@$ 'input[name="nocache"]').prop 'checked', @model.get 'nocache'
-    (@$ '.modal-header .close').remove()
-    (@$el.children ":first").modal()
+    @$el.html @template
 
-    @model.backup()
+    @field = @$el.find('.form-control')
 
-    @model.bind 'change', @validate
+    @model.bind 'change', @render
 
     @render()
-    @validate()
-    _.delay (=> (@$f 'uri').focus()), 300
-    no
 
-  render: () =>
-    @undelegateEvents()
-    if @edit
-      (@$ f).attr 'disabled', on for f in 'mimetype uri file_upload'.split ' '
-      (@$ '#modalLabel').text "Edit Asset"
-      (@$ '.asset-location').hide(); (@$ '.asset-location.edit').show()      
+  get_time: (time) =>
+    hours = time // 3600
+    minutes = (time - hours * 3600) // 60
+    seconds = (time - hours * 3600 - minutes * 60).toFixed 0
+    [hours, minutes, seconds]
 
-    (@$ '.duration').toggle (true)
-    @clickTabNavUri() if (@model.get 'mimetype') == 'webpage'
+  render: =>
+    [hours, minutes, seconds] = @get_time(@model.attributes[@type])
+    @field.text(hours+':'+minutes+':'+seconds)
 
-    for field in @model.fields
-      if (@$fv field) != @model.get field
-        @$fv field, @model.get field
-    (@$ '.uri-text').html insertWbr @model.get 'uri'
 
-    @delegateEvents()
-    no
-
-  viewmodel: =>
-    for field in @model.fields when not (@$f field).prop 'disabled'
-      console.log('field: '+field+' value: '+@$fv field)
-      @model.set field, (@$fv field), silent:yes
-
+API.View.DirectoryView = class DirectoryView extends DisposableView
   events:
-    'submit form': 'save'
-    'click .cancel': 'cancel'
-    'change': 'change'
-    'keyup': 'change'
-    'click .tabnav-uri': 'clickTabNavUri'
-    'click .tabnav-file_upload': 'clickTabNavUpload'
-    'click .tabnav-browse': 'clickTabNavBrowse'
-    'click #tab-browse.tab-pane > fieldset > ul.files > li': 'clickFolder'
-    'paste [name=uri]': 'updateUriMimetype'
-    'change [name=file_upload]': 'updateFileUploadMimetype'
-    'change [name=mimetype]': 'change_mimetype'
+    'click #directory-list > li.dir': 'clickFolder'
+  initialize: (attrs, options) =>    
+    @template = $ '<span class="input-group-addon">
+                    Directory
+                  </span>
+                  <div class="form-control" style="height: 300px">
+                    <div id="directory"/>
+                    <ul id="directory-list"/>
+                  </div>'
+    @$el.html @template
 
-  save: (e) =>
-    e.preventDefault()
-    @viewmodel()
-    save = null
-    @model.set 'nocache', if (@$ 'input[name="nocache"]').prop 'checked' then 1 else 0
-    if (@$ '#tab-file_upload').hasClass 'active'
-      if not @$fv 'name'
-        @$fv 'name', get_filename @$fv 'file_upload'
-      (@$ '.progress').show()
-      @$el.fileupload
-        url: @model.url()
-        progressall: (e, data) => if data.loaded and data.total
-          (@$ '.progress .bar').css 'width', "#{data.loaded/data.total*100}%"
-      save = @$el.fileupload 'send', fileInput: (@$f 'file_upload')
-    else
-      if not @model.get 'name'
-        if @model.old_name()
-          @model.set {name: @model.old_name()}, silent:yes
-        else if get_mimetype @model.get 'uri'
-          @model.set {name: get_filename @model.get 'uri'}, silent:yes
-        else
-          @model.set {name: @model.get 'uri'}, silent:yes
-      save = @model.save()
-
-    (@$ 'input, select').prop 'disabled', on
-    save.done (data) =>
-      @model.id = data.asset_id
-      @collection.add @model if not @model.collection
-      (@$el.children ":first").modal 'hide'
-      _.extend @model.attributes, data
-      @model.collection.add @model unless @edit
-    save.fail =>
-      (@$ '.progress').hide()
-      (@$ 'input, select').prop 'disabled', off
-    no
-
-  change: (e) =>
-    @_change  ||= _.throttle (=>
-      @viewmodel()
-      @model.trigger 'change'
-      @validate()
-      yes), 500
-    @_change arguments...
-
-  change_mimetype: =>
-    if (@$fv 'mimetype') != "video"
-      (@$ '.zerohint').hide()
-      @$fv 'duration', default_duration
-    else
-      (@$ '.zerohint').show()
-      @$fv 'duration', 0
-
-  validate: (e) =>
-    that = this
-    validators =
-      duration: (v) =>
-        if ('video' isnt @model.get 'mimetype') and (not (_.isNumber v*1 ) or v*1 < 1)
-          'please enter a valid number'
-      uri: (v) =>
-        if @model.isNew() and ((that.$ '#tab-uri').hasClass 'active') and not url_test v
-          'please enter a valid URL'
-      file_upload: (v) =>
-        if @model.isNew() and not v and (that.$ '#tab-file-upload').hasClass 'active'
-          return 'please select a file'
-    errors = ([field, v] for field, fn of validators when v = fn (@$fv field))
-
-    (@$ ".control-group.warning .help-inline.warning").remove()
-    (@$ ".control-group").removeClass 'warning'
-    (@$ '[type=submit]').prop 'disabled', no
+    @list = @$el.find('#directory-list')
+    @directory = @$el.find('#directory')
     
-    for [field, v] in errors      
-      (@$ '[type=submit]').prop 'disabled', yes
-      (@$ ".control-group.#{field}").addClass 'warning'
-      (@$ ".control-group.#{field} .controls").append \
-        $ ("<span class='help-inline warning'>#{v}</span>")    
+    @collection.bind 'sync', @render    
 
-  cancel: (e) =>
-    @model.rollback()
-    unless @edit then @model.destroy()
-    (@$el.children ":first").modal 'hide'
+    @fetch(@model.attributes.directory or '/')
 
-  clickTabNavUri: (e) => # TODO: clean
-    if not (@$ '#tab-uri').hasClass 'active'
-      (@$ 'ul.nav-tabs li').removeClass 'active'
-      (@$ '.tab-pane').removeClass 'active'
-      (@$ '.tabnav-file_upload').removeClass 'active'
-      (@$ '#tab-file_upload').removeClass 'active' 
-      (@$ '.tabnav-browse').removeClass 'active'
-      (@$ '#tab-browse').removeClass 'active'
+  fetch: (path) =>    
+    @path = path
+    that = @
+    retryOnce = true
 
-      (@$ '.tabnav-uri').addClass 'active'
-      (@$ '#tab-uri').addClass 'active'
-      (@$f 'uri').focus()
+    @collection.fetch 
+      data: 
+        path: @path
+      success: (collection, response, options) ->
+        that.model.attributes.directory = that.path
+        that.model.save()
 
-      @$fv 'uri', ''
-      @$fv 'mimetype', 'webpage'
+      error: (collection, response, options) ->
+        if retryOnce
+          retryOnce = false
+          that.fetch('/')
 
-      @validate()
-    no
-
-  clickTabNavUpload: (e) => # TODO: clean
-    if not (@$ '#tab-file_upload').hasClass 'active'
-      (@$ 'ul.nav-tabs li').removeClass 'active'
-      (@$ '.tab-pane').removeClass 'active'
-      (@$ '.tabnav-uri').removeClass 'active'
-      (@$ '#tab-uri').removeClass 'active'
-      (@$ '.tabnav-browse').removeClass 'active'
-      (@$ '#tab-browse').removeClass 'active'
-
-      (@$ '.tabnav-file_upload').addClass 'active'
-      (@$ '#tab-file_upload').addClass 'active' 
-            
-      @$fv 'uri', ''
-      @$fv 'mimetype', 'webpage'
-
-      @validate()
-    no
-
-  clickTabNavBrowse: (e) => # TODO: clean
-    if not (@$ '#tab-browse').hasClass 'active'
-      (@$ 'ul.nav-tabs li').removeClass 'active'
-      (@$ '.tab-pane').removeClass 'active'
-      (@$ '.tabnav-file_upload').removeClass 'active'
-      (@$ '#tab-file_upload').removeClass 'active' 
-      (@$ '.tabnav-uri').removeClass 'active'
-      (@$ '#tab-uri').removeClass 'active'
-
-      (@$ '.tabnav-browse').addClass 'active'
-      (@$ '#tab-browse').addClass 'active'
-      
-      @$fv 'uri', '/'
-      @$fv 'mimetype', 'dir'
-
-      @.validate()
-
-      @updateFolderSelection('/', 'dir')
-    no
   clickFolder: (e) =>
-    stat = JSON.parse($(e.target).data('stat'))
-    
-    @$fv 'uri', stat['path']
-    @$fv 'mimetype', stat['mime']
-
-    @.validate()
-
-    @updateFolderSelection(stat['path'], stat['mime'])
-
-  updateFolderSelection: (path, mime) =>   
-    
-    ($ '#tab-browse.tab-pane').find('.path').text(path)
-
-    if mime == 'dir'
-      $.ajax('/api/filesystem'+path).success (files, status, xhr) ->        
-        ($ '#tab-browse.tab-pane').find('.files').empty()                    
-
-        $.each files, (index,file) ->           
-          li = $ '<li data-><img class="'+(if file['mime'] == 'dir' then 'dir' else 'file')+'"/>'+file.name+'</li>'
-          li.data 'stat', JSON.stringify(file)
-          ($ '#tab-browse.tab-pane').find('.files').append li
-          
-
-  updateUriMimetype: => _.defer => @updateMimetype @$fv 'uri'
-  updateFileUploadMimetype: => _.defer => @updateMimetype @$fv 'file_upload'
-  updateMimetype: (filename) =>
-    # also updates the filename label in the dom
-    mt = get_mimetype filename
-    (@$ '#file_upload_label').text (get_filename filename)
-    @$fv 'mimetype', mt if mt
-    @change_mimetype()
-
-
-API.View.AssetRowView = class AssetRowView extends Backbone.View
-  tagName: "tr"
-
-  initialize: (options) =>
-    @template = get_template 'asset-row'
-
-  render: =>
-    @$el.html @template _.extend json = @model.toJSON(),
-      name: insertWbr json.name # word break urls at slashes
-    @$el.prop 'id', @model.get 'asset_id'
-    (@$ ".delete-asset-button").popover content: get_template 'confirm-delete'
-    (@$ ".toggle input").prop "checked", @model.get 'is_enabled'
-    (@$ ".asset-icon").addClass switch @model.get "mimetype"
-      when "video"   then "icon-facetime-video"
-      when "image"   then "icon-picture"
-      when "webpage" then "icon-globe"
-      when "slideshow" then "icon-picture"
-      else ""
-    @el
-
-  events:
-    'change .is_enabled-toggle input': 'toggleIsEnabled'
-    'click .edit-asset-button': 'edit'
-    'click .delete-asset-button': 'showPopover'
-
-  toggleIsEnabled: (e) =>
-    val = (1 + @model.get 'is_enabled') % 2
-    @model.set is_enabled: val
-    @setEnabled off
-    save = @model.save()
-    save.done => @setEnabled on
-    save.fail =>
-      @model.set @model.previousAttributes(), silent:yes # revert changes
-      @setEnabled on
-      @render()
-    yes
-
-  setEnabled: (enabled) => if enabled
-      @$el.removeClass 'warning'
-      @delegateEvents()
-      (@$ 'input, button').prop 'disabled', off
-    else
-      @hidePopover()
-      @undelegateEvents()
-      @$el.addClass 'warning'
-      (@$ 'input, button').prop 'disabled', on
-
-  edit: (e) =>
-    new EditAssetView model: @model, edit:on
-    no
-
-  delete: (e) =>
-    @hidePopover()
-    if (xhr = @model.destroy()) is not false
-      xhr.done => @remove()
-    else
-      @remove()
-    no
-
-  showPopover: =>
-    if not ($ '.popover').length
-      (@$ ".delete-asset-button").popover 'show'
-      ($ '.confirm-delete').click @delete
-      ($ window).one 'click', @hidePopover
-    no
-
-  hidePopover: =>
-    (@$ ".delete-asset-button").popover 'hide'
-    no
-
-
-API.View.AssetsView = class AssetsView extends Backbone.View
-  initialize: (options) =>
-    @collection.bind event, @render for event in ('reset add remove sync'.split ' ')
-    @sorted = (@$ '#active-assets').sortable
-      containment: 'parent'
-      axis: 'y'
-      helper: 'clone'
-      update: @update_order
-
-  update_order: =>
-    active = (@$ '#active-assets').sortable 'toArray'
-    
-    @collection.get(id).set('play_order', i) for id, i in active
-    @collection.get(el.id).set('play_order', active.length) for el in (@$ '#inactive-assets tr').toArray()
-
-    $.post '/api/assets/order', ids: ((@$ '#active-assets').sortable 'toArray').join ','
-
-  render: =>
-    @collection.sort()
-    
-    (@$ "##{which}-assets").html '' for which in ['active', 'inactive']
-
-    @collection.each (model) =>
-      which = if model.active() then 'active' else 'inactive'
-      (@$ "##{which}-assets").append (new AssetRowView model: model).render()
-
-    for which in ['inactive', 'active']
-      @$(".#{which}-table thead").toggle !!(@$("##{which}-assets tr").length)
+    data_stat = $(e.target).data('stat')
+    if data_stat 
+      stat = JSON.parse(data_stat)
       
-    @update_order()
-   
-    @el
+      @fetch(stat['path'])
+
+  render: =>
+    @list.empty()
+    @directory.text(@path)
+
+    for model in @collection.models      
+      cls = if model.attributes.mime == 'dir' then 'dir' else 'file'
+      $li = $ "<li class='#{cls}'><img class='#{cls}'/>#{model.attributes.name}</li>"
+      $li.data 'stat', JSON.stringify(model.attributes)
+      @list.append $li
+    no
+
+API.View.EntryView = class EntryView extends DisposableView
+  events: 
+    'change input#name': 'updateName'
+    'click #delete-button': 'deleteEntry'
+
+  initialize: (attrs, options) =>
+    that = @
+    @intervall = options.intervall
+    @index = options.index
+    @deletable = @model.collection.length > 1
 
 
-API.App = class App extends Backbone.View
-  initialize: =>
+    @$el.empty()
+
+    @template = $ "
+        <div class='panel panel-success'>
+          <div class='panel-heading clearfix'>
+            <div class='panel-title pull-left'>
+              Entry
+            </div>
+            <div class='pull-right'>
+              <button id='delete-button' type='button' class='btn btn-danger' #{if @deletable then '' else 'disabled'}>
+                Delete
+              </button>
+            </div>
+          </div>
+          <div class='input-group'>
+            <span class='input-group-addon'>
+              Name
+            </span>
+            <input id='name' class='form-control' type='text' placeholder='name' value='#{@model.attributes.name}'/>
+          </div>
+          <div class='input-group' id='directory-container'>            
+          </div>
+          <div class='input-group' id='start-container'>            
+          </div>
+          <div class='input-group' id='end-container'>            
+          </div>
+        </div>
+    "
+
+    @directory = new DirectoryView
+      collection: new Directory {}
+      model: @model
+      el: @template.find('#directory-container') 
+
+    @start = new TimeView {
+      el: @template.find('#start-container')
+      model: @model
+      },
+      {
+        name: 'Start'
+        type: 'start'
+      }
+
+
+    @end = new TimeView {
+      el: @template.find('#end-container')
+      model: @model
+      },
+      {
+        name: 'End'
+        type: 'end'
+      }
+
+    @$el.html @template
+    no
+
+  updateName: (e) =>
+    @model.attributes.name = $(e.target).val()
+    @model.save()
+
+  deleteEntry: (e) =>
+    if @index - 1 >= 0
+      last = @model.collection.models[@index - 1]
+      last.attributes.end = @model.attributes.end
+      last.save()
+    else if @index + 1 <= @model.collection.length - 1
+      next = @model.collection.models[@index + 1]
+      next.attributes.start = @model.attributes.start
+      next.save()
+
+    @intervall.remove()
+    @model.destroy()
+    API.controller.unshowEntry()
+
+  close: () =>
+    @start.close()
+    @end.close()
+    @directory.close()
+    super()
+
+API.View.Timeline = class TimelineView extends DisposableView 
+  
+  events:
+    'click .timeline-intervall': 'showEntryView'
+
+  get_end: ($intervall) =>
+    ($intervall.width() + $intervall.offset().left - @$el.offset().left) * @max_seconds / @$el.width()
+
+  get_start: ($intervall) =>
+    get_end($intervall) - ($intervall.width() * @max_seconds / @$el.width())
+
+  duration: ($intervall) =>
+    @get_end($intervall) - @get_start($intervall)
+
+  get_time: (e) =>
+    relX = e.pageX - @$el.offset().left
+    time = (relX / @$el.width()) * 24 * 60 * 60      
+    hours = time // 3600
+    minutes = (time - hours * 3600) // 60
+    seconds = (time - hours * 3600 - minutes * 60).toFixed 0
+    [hours, minutes, seconds]
+
+
+  initialize: (attrs, options) =>
+    @max_seconds = 24*60*60
+    @width = @$el.parent().width()
+    @intervalls = []
+    that = @
+
+    tooltip = @$el.find('#timeline-tooltip')
+
+    @$el.mousemove (e) -> 
+      relX = e.pageX - that.$el.offset().left
+      [hours,minutes,seconds] = that.get_time(e)
+      
+      tooltip.attr 'title',  hours+':'+minutes+':'+seconds
+      tooltip.css 
+        top: (e.pageY - $(e.target).offset().top) - 5
+        left: relX
+      tooltip.tooltip 'fixTitle'
+      tooltip.tooltip 'show'
+
+    @$el.mouseleave (e) ->
+      tooltip.tooltip 'hide'
+    
+
+    @$el.contextMenu
+      menu: [
+        {
+          name: 'Insert keyframe'
+          callback: (e) -> 
+            relX = e.data.pageX - that.$el.offset().left
+            time = (relX / that.$el.width()) * 24 * 60 * 60
+            
+            that.insert(time)            
+        }
+      ],
+      data: that
+    
+    @render()  
+
+  showEntryView: (e) =>
+    $intervall = $(e.currentTarget)
+    @$el.find('.timeline-intervall').removeClass('active')
+    $intervall.addClass('active')
+
+    index = parseInt($intervall.data('index'))
+    model = @collection.models[index]
+    API.controller.showEntry model, 
+      intervall: $intervall
+      index: index
+
+  get_intervall_at: (time) =>
+    for entry in @collection.models
+      if entry.attributes.start < time and entry.attributes.end > time
+        return entry
+
+  insert: (time) =>
+    intervall = @get_intervall_at(time)
+
+    if intervall
+      startTime = intervall.attributes.start
+      intervall.attributes.start = time      
+      intervall.save()
+      
+      @collection.create 
+        directory: '/'
+        start: startTime
+        end: time
+     
+      @render()      
+    no
+
+  renderIntervall: (entry, index) =>
+    that = @
+
+    $intervall = $ "<div class='timeline-intervall' data-index='#{index}'><div class='timeline-keyframe'/></div>"
+      
+    $intervall.css 
+      width: (((entry.attributes.end - entry.attributes.start) / @max_seconds) * @$el.width()) + 'px'
+      
+    @$el.append($intervall)
+
+
+    $keyframe = $intervall.find('.timeline-keyframe')
+
+    # do not allow movement of last keyframe
+    if index < @collection.models.length - 1
+      $keyframe.mousedown (e) ->
+        that.isDragging = true 
+        that.dragIntervall = $intervall
+        that.startX = e.pageX
+        that.startWidth = $intervall.width()          
+        that.next = $(".timeline-intervall[data-index='#{index+1}']")
+        that.nextStartWidth = that.next.width()              
+    else
+      $keyframe.toggleClass('timeline-keyframe')
+    
+
+  render: =>
+    @$el.find('.timeline-intervall').remove() 
+
+    @isDragging = false
+    @dragIntervall
+    @startWidth = null
+    @startX = null
+    @next = null
+    @nextStartWidth = null   
+
+    that = @
+
+    @$el.mousemove (e) ->
+      if that.isDragging
+        delta = e.pageX - that.startX
+        that.dragIntervall.width(that.startWidth + delta)
+        that.next.width(that.nextStartWidth - delta)        
+    
+    @$el.mouseup (e) ->
+      if that.isDragging
+        end = that.get_end(that.dragIntervall)
+        index = parseInt(that.dragIntervall.data('index'))
+        model = that.collection.models[index]
+        model.attributes.end = end
+        model.save()
+
+        nextIndex = parseInt(that.next.data('index'))
+        nextModel = that.collection.models[nextIndex]
+        nextModel.attributes.start = end
+        nextModel.save()
+
+        that.isDragging = false
+    
+    @$el.mouseleave (e) ->
+      if that.isDragging
+        that.dragIntervall.width(that.startWidth)
+      @isDragging = false
+      
+    
+
+    for entry, index in @collection.models
+      @renderIntervall entry, index
+
+
+API.View.ScheduleView = class ScheduleView extends DisposableView
+  events: 
+    'change input.form-control[placeholder="name"]': 'changeName'
+    'click #enableSchedule': 'enableSchedule'
+    'click #deleteSchedule': 'deleteSchedule'
+  initialize: (attrs, options) =>
+    that = @
+    @template = $ "
+        <div class='panel panel-success'>
+          <div class='panel-heading clearfix'>
+            <div class='panel-title pull-left'>
+              Schedule
+            </div>
+            <div class='pull-right'>
+                <button id='enableSchedule' type='button' class='btn btn-danger' title='Enable' style='display: inline-block'>Disabled</button>                
+                <button id='deleteSchedule' type='button' class='btn btn-danger' style='display: inline-block'>Remove</button>              
+            </div>
+          </div>
+          <div class='input-group'>
+            <span class='input-group-addon'>
+              Name
+            </span>
+            <input class='form-control' type='text' placeholder='name' value='#{@model.attributes.name}'/>
+          </div>
+          <div id='timeline'>
+            <i id='timeline-tooltip' data-toggle='tooltip' data-placement='top' data-animation='false' data-trigger='manual'/>
+          </div>
+        </div>
+    "
+
+    @$el.html @template    
+    if @model.attributes.active
+      $button = @template.find('#enableSchedule')
+      $button.removeClass 'btn-danger'
+      $button.prop 'disabled', true  
+      $button.addClass 'btn-success'      
+      $button.text 'Enabled'
+      $button.attr 'title', 'Enabled'
+
+    @model.attributes.entries.bind event, @reload for event in ('add remove'.split ' ')     
+
+    @timeline = new TimelineView
+      el: @template.find('#timeline')
+      collection: that.model.attributes.entries
+
+  reload: (e) =>
+    API.controller.showSchedule(@model)
+
+  deleteSchedule: (e) =>
+    @model.attributes.entries.unbind event, @reload for event in ('add remove'.split ' ')     
+    while entry = @model.attributes.entries.first()      
+      entry.destroy()
+
+    @model.destroy()
+
+    API.controller.unshowSchedule()
+
+  enableSchedule: (e) =>      
+    $button = $(e.currentTarget)
+    $button.removeClass 'btn-danger'
+    $button.prop 'disabled', true  
+    $button.addClass 'btn-success'      
+    $button.text 'Enabled'
+
+    @model.attributes.active = true
+    @model.save()
+      
+    for schedule in @model.collection.models
+      if schedule.attributes.active and schedule.attributes.id != @model.attributes.id
+        schedule.attributes.active = false
+        schedule.save() 
+
+  changeName: (e) =>
+    @model.attributes.name = $(e.target).val()
+    @model.save()
+
+  close: =>
+    @timeline.close()
+    super()
+
+
+API.View.SchedulesView = class SchedulesView extends DisposableView
+  events: 
+    'click .list-group-item': 'clickScheduleLink' 
+  initialize: (attrs, options) =>    
+    @collection.bind event, @render for event in ('sync add remove reset'.split ' ')      
+
+  clickScheduleLink: (e) =>
+    index = $(e.currentTarget).data('schedule')
+    entries = new API.Entries()
+
+    schedule = @collection.models[index]
+    entries.schedule_id = schedule.attributes.id
+
+    entries.fetch
+      success: (collection, response, options) ->
+        schedule.set 
+          entries: collection
+        
+        API.controller.showSchedule(schedule)
+
+  render: =>
+    @$el.empty()
+
+    @collection.each (model, index) =>  
+      $schedule = $("<a class='list-group-item' data-schedule='#{index}' href='#'> 
+        <div class='schedule-row-title'>
+          #{model.attributes.name}&nbsp;
+        </div>
+        <div class='pull-right'>" + 
+          (if model.attributes.active then "<span class='label label-success'>Enabled</span>" else "<span class='label label-danger'>Disabled</span>") + 
+            "</div>
+        </a>")
+      @$el.append($schedule)
+
+
+API.App = class App extends DisposableView
+  events: 
+    'click #schedule-add': 'add'
+
+  initialize: (attrs, options) =>    
     ($ window).ajaxError (e,r) =>
       ($ '#request-error').html (get_template 'request-error')()
       if (j = $.parseJSON r.responseText) and (err = j.error)
@@ -434,15 +563,67 @@ API.App = class App extends Backbone.View
     ($ window).ajaxSuccess (data) =>
       ($ '#request-error').html ''
 
-    (API.assets = new Assets()).fetch()
-    API.assetsView = new AssetsView
-      collection: API.assets
-      el: @$ '#assets'
+    (API.schedules = new Schedules()).fetch()    
 
-
-  events: {'click #add-asset-button': 'add'}
+    API.controller = new API.Controller
+    API.controller.showSchedules()
 
   add: (e) =>
-    new EditAssetView model:
-      new Asset {}, {collection: API.assets}
-    no
+    API.schedules.create {
+      name: new Date
+      entries: new Entries ([])
+      }, 
+      {
+        success: (model, response) ->
+          model.attributes.entries.schedule_id = model.attributes.id
+          model.attributes.entries.create {
+            start:0, 
+            end: 24*3600
+            directory: '/'
+          }
+      }
+
+API.Controller = class Controller 
+  showSchedules: =>
+    if @schedulesView
+      @schedulesView.close()
+
+    @schedulesView = new SchedulesView
+      collection: API.schedules
+      el: $ '#schedules'
+    @schedulesView
+
+  unshowSchedule: =>
+    if @scheduleView
+      @scheduleView.close()
+    if @entryView
+      @entryView.close()  
+    @entryView = null
+    @scheduleView = null
+
+  showSchedule: (schedule) =>
+    @unshowEntry()
+
+    if @scheduleView
+      @scheduleView.close()
+
+    @scheduleView = new ScheduleView   
+      model: schedule
+      el: $ '#schedule'
+    @scheduleView
+
+  unshowEntry: =>
+    if @entryView
+      @entryView.close() 
+    @entryView = null
+
+  showEntry: (entry, options) =>
+    if @entryView
+      @entryView.close()      
+
+    @entryView = new EntryView {
+        el: $('#entry')
+        model: entry           
+      }
+      , options
+    @entryView

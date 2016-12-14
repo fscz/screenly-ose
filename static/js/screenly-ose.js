@@ -3,12 +3,11 @@
 /* screenly-ose ui */
 
 (function() {
-  var API, App, Asset, AssetRowView, Assets, AssetsView, EditAssetView, delay, get_filename, get_mimetype, get_template, insertWbr, supported_upload_mimetypes, supported_video_uri_schemes, url_test,
+  var API, App, Controller, Directory, DirectoryView, DisposableView, Entries, Entry, EntryView, Schedule, ScheduleView, Schedules, SchedulesView, TimeView, TimelineView, delay, get_filename, get_mimetype, get_template, insertWbr, supported_upload_mimetypes, supported_video_uri_schemes, url_test,
     indexOf = [].indexOf || function(item) { for (var i = 0, l = this.length; i < l; i++) { if (i in this && this[i] === item) return i; } return -1; },
     bind = function(fn, me){ return function(){ return fn.apply(me, arguments); }; },
     extend = function(child, parent) { for (var key in parent) { if (hasProp.call(parent, key)) child[key] = parent[key]; } function ctor() { this.constructor = child; } ctor.prototype = parent.prototype; child.prototype = new ctor(); child.__super__ = parent.prototype; return child; },
-    hasProp = {}.hasOwnProperty,
-    slice = [].slice;
+    hasProp = {}.hasOwnProperty;
 
   $().ready(function() {
     var hide_popover, popover_shown, show_popover;
@@ -46,7 +45,7 @@
   API = (window.Screenly || (window.Screenly = {}));
 
   get_template = function(name) {
-    return _.template(($("#" + name + "-template")).html());
+    return _.template(($("#" + name)).html());
   };
 
   delay = function(wait, fn) {
@@ -91,653 +90,667 @@
 
   Backbone.emulateJSON = true;
 
-  API.Asset = Asset = (function(superClass) {
-    extend(Asset, superClass);
+  API.Entry = Entry = (function(superClass) {
+    extend(Entry, superClass);
 
-    function Asset() {
-      this.old_name = bind(this.old_name, this);
-      this.rollback = bind(this.rollback, this);
-      this.backup = bind(this.backup, this);
-      this.active = bind(this.active, this);
+    function Entry() {
       this.defaults = bind(this.defaults, this);
-      return Asset.__super__.constructor.apply(this, arguments);
+      return Entry.__super__.constructor.apply(this, arguments);
     }
 
-    Asset.prototype.idAttribute = "asset_id";
+    Entry.prototype.idAttribute = "id";
 
-    Asset.prototype.fields = 'name mimetype uri duration options'.split(' ');
+    Entry.prototype.fields = 'name directory start end'.split(' ');
 
-    Asset.prototype.defaults = function() {
+    Entry.prototype.defaults = function() {
       return {
         name: '',
-        mimetype: 'webpage',
-        uri: '',
-        is_active: false,
-        duration: default_duration,
-        is_enabled: 0,
-        nocache: 0,
-        play_order: 0
+        directory: '',
+        mimetype: '',
+        start: 0,
+        end: 0
       };
     };
 
-    Asset.prototype.active = function() {
-      return this.get('is_enabled');
-    };
-
-    Asset.prototype.backup = function() {
-      return this.backup_attributes = this.toJSON();
-    };
-
-    Asset.prototype.rollback = function() {
-      if (this.backup_attributes) {
-        this.set(this.backup_attributes);
-        return this.backup_attributes = void 0;
-      }
-    };
-
-    Asset.prototype.old_name = function() {
-      if (this.backup_attributes) {
-        return this.backup_attributes.name;
-      }
-    };
-
-    return Asset;
+    return Entry;
 
   })(Backbone.Model);
 
-  API.Assets = Assets = (function(superClass) {
-    extend(Assets, superClass);
+  API.Entries = Entries = (function(superClass) {
+    extend(Entries, superClass);
 
-    function Assets() {
-      return Assets.__super__.constructor.apply(this, arguments);
+    function Entries() {
+      return Entries.__super__.constructor.apply(this, arguments);
     }
 
-    Assets.prototype.url = "/api/assets";
+    Entries.prototype.model = Entry;
 
-    Assets.prototype.model = Asset;
+    Entries.prototype.comparator = function(item) {
+      return parseInt(item.get('start'));
+    };
 
-    Assets.prototype.comparator = 'play_order';
+    Entries.prototype.url = function() {
+      return "/api/schedules/" + this.schedule_id + "/entries";
+    };
 
-    return Assets;
+    return Entries;
+
+  })(Backbone.Collection);
+
+  API.Schedule = Schedule = (function(superClass) {
+    extend(Schedule, superClass);
+
+    function Schedule() {
+      this.defaults = bind(this.defaults, this);
+      return Schedule.__super__.constructor.apply(this, arguments);
+    }
+
+    Schedule.prototype.idAttribute = "id";
+
+    Schedule.prototype.fields = 'name active'.split(' ');
+
+    Schedule.prototype.defaults = function() {
+      return {
+        name: '',
+        active: false
+      };
+    };
+
+    return Schedule;
+
+  })(Backbone.Model);
+
+  API.Schedules = Schedules = (function(superClass) {
+    extend(Schedules, superClass);
+
+    function Schedules() {
+      return Schedules.__super__.constructor.apply(this, arguments);
+    }
+
+    Schedules.prototype.model = Schedule;
+
+    Schedules.prototype.url = "/api/schedules";
+
+    return Schedules;
+
+  })(Backbone.Collection);
+
+  API.Directory = Directory = (function(superClass) {
+    extend(Directory, superClass);
+
+    function Directory() {
+      return Directory.__super__.constructor.apply(this, arguments);
+    }
+
+    Directory.prototype.url = '/api/directory';
+
+    return Directory;
 
   })(Backbone.Collection);
 
   API.View = {};
 
-  API.View.EditAssetView = EditAssetView = (function(superClass) {
-    extend(EditAssetView, superClass);
+  DisposableView = (function(superClass) {
+    extend(DisposableView, superClass);
 
-    function EditAssetView() {
-      this.updateMimetype = bind(this.updateMimetype, this);
-      this.updateFileUploadMimetype = bind(this.updateFileUploadMimetype, this);
-      this.updateUriMimetype = bind(this.updateUriMimetype, this);
-      this.updateFolderSelection = bind(this.updateFolderSelection, this);
-      this.clickFolder = bind(this.clickFolder, this);
-      this.clickTabNavBrowse = bind(this.clickTabNavBrowse, this);
-      this.clickTabNavUpload = bind(this.clickTabNavUpload, this);
-      this.clickTabNavUri = bind(this.clickTabNavUri, this);
-      this.cancel = bind(this.cancel, this);
-      this.validate = bind(this.validate, this);
-      this.change_mimetype = bind(this.change_mimetype, this);
-      this.change = bind(this.change, this);
-      this.save = bind(this.save, this);
-      this.viewmodel = bind(this.viewmodel, this);
-      this.render = bind(this.render, this);
-      this.initialize = bind(this.initialize, this);
-      this.$fv = bind(this.$fv, this);
-      this.$f = bind(this.$f, this);
-      return EditAssetView.__super__.constructor.apply(this, arguments);
+    function DisposableView() {
+      this.close = bind(this.close, this);
+      return DisposableView.__super__.constructor.apply(this, arguments);
     }
 
-    EditAssetView.prototype.$f = function(field) {
-      return this.$("[name='" + field + "']");
+    DisposableView.prototype.close = function() {
+      this.unbind();
+      this.$el.empty();
+      return this.undelegateEvents();
     };
 
-    EditAssetView.prototype.$fv = function() {
-      var field, ref, val;
-      field = arguments[0], val = 2 <= arguments.length ? slice.call(arguments, 1) : [];
-      return (ref = this.$f(field)).val.apply(ref, val);
-    };
+    return DisposableView;
 
-    EditAssetView.prototype.initialize = function(options) {
-      this.edit = options.edit;
-      ($('body')).append(this.$el.html(get_template('asset-modal')));
-      (this.$('input[name="nocache"]')).prop('checked', this.model.get('nocache'));
-      (this.$('.modal-header .close')).remove();
-      (this.$el.children(":first")).modal();
-      this.model.backup();
-      this.model.bind('change', this.validate);
-      this.render();
-      this.validate();
-      _.delay(((function(_this) {
-        return function() {
-          return (_this.$f('uri')).focus();
-        };
-      })(this)), 300);
-      return false;
-    };
+  })(Backbone.View);
 
-    EditAssetView.prototype.render = function() {
-      var f, field, k, l, len, len1, ref, ref1;
-      this.undelegateEvents();
-      if (this.edit) {
-        ref = 'mimetype uri file_upload'.split(' ');
-        for (k = 0, len = ref.length; k < len; k++) {
-          f = ref[k];
-          (this.$(f)).attr('disabled', true);
-        }
-        (this.$('#modalLabel')).text("Edit Asset");
-        (this.$('.asset-location')).hide();
-        (this.$('.asset-location.edit')).show();
-      }
-      (this.$('.duration')).toggle(true);
-      if ((this.model.get('mimetype')) === 'webpage') {
-        this.clickTabNavUri();
-      }
-      ref1 = this.model.fields;
-      for (l = 0, len1 = ref1.length; l < len1; l++) {
-        field = ref1[l];
-        if ((this.$fv(field)) !== this.model.get(field)) {
-          this.$fv(field, this.model.get(field));
-        }
-      }
-      (this.$('.uri-text')).html(insertWbr(this.model.get('uri')));
-      this.delegateEvents();
-      return false;
-    };
+  API.View.TimeView = TimeView = (function(superClass) {
+    extend(TimeView, superClass);
 
-    EditAssetView.prototype.viewmodel = function() {
-      var field, k, len, ref, results;
-      ref = this.model.fields;
-      results = [];
-      for (k = 0, len = ref.length; k < len; k++) {
-        field = ref[k];
-        if (!(!(this.$f(field)).prop('disabled'))) {
-          continue;
-        }
-        console.log('field: ' + field + ' value: ' + this.$fv(field));
-        results.push(this.model.set(field, this.$fv(field), {
-          silent: true
-        }));
-      }
-      return results;
-    };
+    function TimeView() {
+      this.render = bind(this.render, this);
+      this.get_time = bind(this.get_time, this);
+      this.initialize = bind(this.initialize, this);
+      return TimeView.__super__.constructor.apply(this, arguments);
+    }
 
-    EditAssetView.prototype.events = {
-      'submit form': 'save',
-      'click .cancel': 'cancel',
-      'change': 'change',
-      'keyup': 'change',
-      'click .tabnav-uri': 'clickTabNavUri',
-      'click .tabnav-file_upload': 'clickTabNavUpload',
-      'click .tabnav-browse': 'clickTabNavBrowse',
-      'click #tab-browse.tab-pane > fieldset > ul.files > li': 'clickFolder',
-      'paste [name=uri]': 'updateUriMimetype',
-      'change [name=file_upload]': 'updateFileUploadMimetype',
-      'change [name=mimetype]': 'change_mimetype'
-    };
-
-    EditAssetView.prototype.save = function(e) {
-      var save;
-      e.preventDefault();
-      this.viewmodel();
-      save = null;
-      this.model.set('nocache', (this.$('input[name="nocache"]')).prop('checked') ? 1 : 0);
-      if ((this.$('#tab-file_upload')).hasClass('active')) {
-        if (!this.$fv('name')) {
-          this.$fv('name', get_filename(this.$fv('file_upload')));
-        }
-        (this.$('.progress')).show();
-        this.$el.fileupload({
-          url: this.model.url(),
-          progressall: (function(_this) {
-            return function(e, data) {
-              if (data.loaded && data.total) {
-                return (_this.$('.progress .bar')).css('width', (data.loaded / data.total * 100) + "%");
-              }
-            };
-          })(this)
-        });
-        save = this.$el.fileupload('send', {
-          fileInput: this.$f('file_upload')
-        });
-      } else {
-        if (!this.model.get('name')) {
-          if (this.model.old_name()) {
-            this.model.set({
-              name: this.model.old_name()
-            }, {
-              silent: true
-            });
-          } else if (get_mimetype(this.model.get('uri'))) {
-            this.model.set({
-              name: get_filename(this.model.get('uri'))
-            }, {
-              silent: true
-            });
-          } else {
-            this.model.set({
-              name: this.model.get('uri')
-            }, {
-              silent: true
-            });
-          }
-        }
-        save = this.model.save();
-      }
-      (this.$('input, select')).prop('disabled', true);
-      save.done((function(_this) {
-        return function(data) {
-          _this.model.id = data.asset_id;
-          if (!_this.model.collection) {
-            _this.collection.add(_this.model);
-          }
-          (_this.$el.children(":first")).modal('hide');
-          _.extend(_this.model.attributes, data);
-          if (!_this.edit) {
-            return _this.model.collection.add(_this.model);
-          }
-        };
-      })(this));
-      save.fail((function(_this) {
-        return function() {
-          (_this.$('.progress')).hide();
-          return (_this.$('input, select')).prop('disabled', false);
-        };
-      })(this));
-      return false;
-    };
-
-    EditAssetView.prototype.change = function(e) {
-      this._change || (this._change = _.throttle(((function(_this) {
-        return function() {
-          _this.viewmodel();
-          _this.model.trigger('change');
-          _this.validate();
-          return true;
-        };
-      })(this)), 500));
-      return this._change.apply(this, arguments);
-    };
-
-    EditAssetView.prototype.change_mimetype = function() {
-      if ((this.$fv('mimetype')) !== "video") {
-        (this.$('.zerohint')).hide();
-        return this.$fv('duration', default_duration);
-      } else {
-        (this.$('.zerohint')).show();
-        return this.$fv('duration', 0);
-      }
-    };
-
-    EditAssetView.prototype.validate = function(e) {
-      var errors, field, fn, k, len, ref, results, that, v, validators;
+    TimeView.prototype.initialize = function(attrs, options) {
+      var that;
       that = this;
-      validators = {
-        duration: (function(_this) {
-          return function(v) {
-            if (('video' !== _this.model.get('mimetype')) && (!(_.isNumber(v * 1)) || v * 1 < 1)) {
-              return 'please enter a valid number';
-            }
-          };
-        })(this),
-        uri: (function(_this) {
-          return function(v) {
-            if (_this.model.isNew() && ((that.$('#tab-uri')).hasClass('active')) && !url_test(v)) {
-              return 'please enter a valid URL';
-            }
-          };
-        })(this),
-        file_upload: (function(_this) {
-          return function(v) {
-            if (_this.model.isNew() && !v && (that.$('#tab-file-upload')).hasClass('active')) {
-              return 'please select a file';
-            }
-          };
-        })(this)
-      };
-      errors = (function() {
-        var results;
-        results = [];
-        for (field in validators) {
-          fn = validators[field];
-          if (v = fn(this.$fv(field))) {
-            results.push([field, v]);
+      this.type = options.type;
+      this.template = $("<span class='input-group-addon'> " + options.name + " </span> <div class='form-control'> </div>");
+      this.$el.html(this.template);
+      this.field = this.$el.find('.form-control');
+      this.model.bind('change', this.render);
+      return this.render();
+    };
+
+    TimeView.prototype.get_time = function(time) {
+      var hours, minutes, seconds;
+      hours = Math.floor(time / 3600);
+      minutes = Math.floor((time - hours * 3600) / 60);
+      seconds = (time - hours * 3600 - minutes * 60).toFixed(0);
+      return [hours, minutes, seconds];
+    };
+
+    TimeView.prototype.render = function() {
+      var hours, minutes, ref, seconds;
+      ref = this.get_time(this.model.attributes[this.type]), hours = ref[0], minutes = ref[1], seconds = ref[2];
+      return this.field.text(hours + ':' + minutes + ':' + seconds);
+    };
+
+    return TimeView;
+
+  })(DisposableView);
+
+  API.View.DirectoryView = DirectoryView = (function(superClass) {
+    extend(DirectoryView, superClass);
+
+    function DirectoryView() {
+      this.render = bind(this.render, this);
+      this.clickFolder = bind(this.clickFolder, this);
+      this.fetch = bind(this.fetch, this);
+      this.initialize = bind(this.initialize, this);
+      return DirectoryView.__super__.constructor.apply(this, arguments);
+    }
+
+    DirectoryView.prototype.events = {
+      'click #directory-list > li.dir': 'clickFolder'
+    };
+
+    DirectoryView.prototype.initialize = function(attrs, options) {
+      this.template = $('<span class="input-group-addon"> Directory </span> <div class="form-control" style="height: 300px"> <div id="directory"/> <ul id="directory-list"/> </div>');
+      this.$el.html(this.template);
+      this.list = this.$el.find('#directory-list');
+      this.directory = this.$el.find('#directory');
+      this.collection.bind('sync', this.render);
+      return this.fetch(this.model.attributes.directory || '/');
+    };
+
+    DirectoryView.prototype.fetch = function(path) {
+      var retryOnce, that;
+      this.path = path;
+      that = this;
+      retryOnce = true;
+      return this.collection.fetch({
+        data: {
+          path: this.path
+        },
+        success: function(collection, response, options) {
+          that.model.attributes.directory = that.path;
+          return that.model.save();
+        },
+        error: function(collection, response, options) {
+          if (retryOnce) {
+            retryOnce = false;
+            return that.fetch('/');
           }
         }
-        return results;
-      }).call(this);
-      (this.$(".control-group.warning .help-inline.warning")).remove();
-      (this.$(".control-group")).removeClass('warning');
-      (this.$('[type=submit]')).prop('disabled', false);
+      });
+    };
+
+    DirectoryView.prototype.clickFolder = function(e) {
+      var data_stat, stat;
+      data_stat = $(e.target).data('stat');
+      if (data_stat) {
+        stat = JSON.parse(data_stat);
+        return this.fetch(stat['path']);
+      }
+    };
+
+    DirectoryView.prototype.render = function() {
+      var $li, cls, i, len, model, ref;
+      this.list.empty();
+      this.directory.text(this.path);
+      ref = this.collection.models;
+      for (i = 0, len = ref.length; i < len; i++) {
+        model = ref[i];
+        cls = model.attributes.mime === 'dir' ? 'dir' : 'file';
+        $li = $("<li class='" + cls + "'><img class='" + cls + "'/>" + model.attributes.name + "</li>");
+        $li.data('stat', JSON.stringify(model.attributes));
+        this.list.append($li);
+      }
+      return false;
+    };
+
+    return DirectoryView;
+
+  })(DisposableView);
+
+  API.View.EntryView = EntryView = (function(superClass) {
+    extend(EntryView, superClass);
+
+    function EntryView() {
+      this.close = bind(this.close, this);
+      this.deleteEntry = bind(this.deleteEntry, this);
+      this.updateName = bind(this.updateName, this);
+      this.initialize = bind(this.initialize, this);
+      return EntryView.__super__.constructor.apply(this, arguments);
+    }
+
+    EntryView.prototype.events = {
+      'change input#name': 'updateName',
+      'click #delete-button': 'deleteEntry'
+    };
+
+    EntryView.prototype.initialize = function(attrs, options) {
+      var that;
+      that = this;
+      this.intervall = options.intervall;
+      this.index = options.index;
+      this.deletable = this.model.collection.length > 1;
+      this.$el.empty();
+      this.template = $("<div class='panel panel-success'> <div class='panel-heading clearfix'> <div class='panel-title pull-left'> Entry </div> <div class='pull-right'> <button id='delete-button' type='button' class='btn btn-danger' " + (this.deletable ? '' : 'disabled') + "> Delete </button> </div> </div> <div class='input-group'> <span class='input-group-addon'> Name </span> <input id='name' class='form-control' type='text' placeholder='name' value='" + this.model.attributes.name + "'/> </div> <div class='input-group' id='directory-container'> </div> <div class='input-group' id='start-container'> </div> <div class='input-group' id='end-container'> </div> </div>");
+      this.directory = new DirectoryView({
+        collection: new Directory({}),
+        model: this.model,
+        el: this.template.find('#directory-container')
+      });
+      this.start = new TimeView({
+        el: this.template.find('#start-container'),
+        model: this.model
+      }, {
+        name: 'Start',
+        type: 'start'
+      });
+      this.end = new TimeView({
+        el: this.template.find('#end-container'),
+        model: this.model
+      }, {
+        name: 'End',
+        type: 'end'
+      });
+      this.$el.html(this.template);
+      return false;
+    };
+
+    EntryView.prototype.updateName = function(e) {
+      this.model.attributes.name = $(e.target).val();
+      return this.model.save();
+    };
+
+    EntryView.prototype.deleteEntry = function(e) {
+      var last, next;
+      if (this.index - 1 >= 0) {
+        last = this.model.collection.models[this.index - 1];
+        last.attributes.end = this.model.attributes.end;
+        last.save();
+      } else if (this.index + 1 <= this.model.collection.length - 1) {
+        next = this.model.collection.models[this.index + 1];
+        next.attributes.start = this.model.attributes.start;
+        next.save();
+      }
+      this.intervall.remove();
+      this.model.destroy();
+      return API.controller.unshowEntry();
+    };
+
+    EntryView.prototype.close = function() {
+      this.start.close();
+      this.end.close();
+      this.directory.close();
+      return EntryView.__super__.close.call(this);
+    };
+
+    return EntryView;
+
+  })(DisposableView);
+
+  API.View.Timeline = TimelineView = (function(superClass) {
+    extend(TimelineView, superClass);
+
+    function TimelineView() {
+      this.render = bind(this.render, this);
+      this.renderIntervall = bind(this.renderIntervall, this);
+      this.insert = bind(this.insert, this);
+      this.get_intervall_at = bind(this.get_intervall_at, this);
+      this.showEntryView = bind(this.showEntryView, this);
+      this.initialize = bind(this.initialize, this);
+      this.get_time = bind(this.get_time, this);
+      this.duration = bind(this.duration, this);
+      this.get_start = bind(this.get_start, this);
+      this.get_end = bind(this.get_end, this);
+      return TimelineView.__super__.constructor.apply(this, arguments);
+    }
+
+    TimelineView.prototype.events = {
+      'click .timeline-intervall': 'showEntryView'
+    };
+
+    TimelineView.prototype.get_end = function($intervall) {
+      return ($intervall.width() + $intervall.offset().left - this.$el.offset().left) * this.max_seconds / this.$el.width();
+    };
+
+    TimelineView.prototype.get_start = function($intervall) {
+      return get_end($intervall) - ($intervall.width() * this.max_seconds / this.$el.width());
+    };
+
+    TimelineView.prototype.duration = function($intervall) {
+      return this.get_end($intervall) - this.get_start($intervall);
+    };
+
+    TimelineView.prototype.get_time = function(e) {
+      var hours, minutes, relX, seconds, time;
+      relX = e.pageX - this.$el.offset().left;
+      time = (relX / this.$el.width()) * 24 * 60 * 60;
+      hours = Math.floor(time / 3600);
+      minutes = Math.floor((time - hours * 3600) / 60);
+      seconds = (time - hours * 3600 - minutes * 60).toFixed(0);
+      return [hours, minutes, seconds];
+    };
+
+    TimelineView.prototype.initialize = function(attrs, options) {
+      var that, tooltip;
+      this.max_seconds = 24 * 60 * 60;
+      this.width = this.$el.parent().width();
+      this.intervalls = [];
+      that = this;
+      tooltip = this.$el.find('#timeline-tooltip');
+      this.$el.mousemove(function(e) {
+        var hours, minutes, ref, relX, seconds;
+        relX = e.pageX - that.$el.offset().left;
+        ref = that.get_time(e), hours = ref[0], minutes = ref[1], seconds = ref[2];
+        tooltip.attr('title', hours + ':' + minutes + ':' + seconds);
+        tooltip.css({
+          top: (e.pageY - $(e.target).offset().top) - 5,
+          left: relX
+        });
+        tooltip.tooltip('fixTitle');
+        return tooltip.tooltip('show');
+      });
+      this.$el.mouseleave(function(e) {
+        return tooltip.tooltip('hide');
+      });
+      this.$el.contextMenu({
+        menu: [
+          {
+            name: 'Insert keyframe',
+            callback: function(e) {
+              var relX, time;
+              relX = e.data.pageX - that.$el.offset().left;
+              time = (relX / that.$el.width()) * 24 * 60 * 60;
+              return that.insert(time);
+            }
+          }
+        ],
+        data: that
+      });
+      return this.render();
+    };
+
+    TimelineView.prototype.showEntryView = function(e) {
+      var $intervall, index, model;
+      $intervall = $(e.currentTarget);
+      this.$el.find('.timeline-intervall').removeClass('active');
+      $intervall.addClass('active');
+      index = parseInt($intervall.data('index'));
+      model = this.collection.models[index];
+      return API.controller.showEntry(model, {
+        intervall: $intervall,
+        index: index
+      });
+    };
+
+    TimelineView.prototype.get_intervall_at = function(time) {
+      var entry, i, len, ref;
+      ref = this.collection.models;
+      for (i = 0, len = ref.length; i < len; i++) {
+        entry = ref[i];
+        if (entry.attributes.start < time && entry.attributes.end > time) {
+          return entry;
+        }
+      }
+    };
+
+    TimelineView.prototype.insert = function(time) {
+      var intervall, startTime;
+      intervall = this.get_intervall_at(time);
+      if (intervall) {
+        startTime = intervall.attributes.start;
+        intervall.attributes.start = time;
+        intervall.save();
+        this.collection.create({
+          directory: '/',
+          start: startTime,
+          end: time
+        });
+        this.render();
+      }
+      return false;
+    };
+
+    TimelineView.prototype.renderIntervall = function(entry, index) {
+      var $intervall, $keyframe, that;
+      that = this;
+      $intervall = $("<div class='timeline-intervall' data-index='" + index + "'><div class='timeline-keyframe'/></div>");
+      $intervall.css({
+        width: (((entry.attributes.end - entry.attributes.start) / this.max_seconds) * this.$el.width()) + 'px'
+      });
+      this.$el.append($intervall);
+      $keyframe = $intervall.find('.timeline-keyframe');
+      if (index < this.collection.models.length - 1) {
+        return $keyframe.mousedown(function(e) {
+          that.isDragging = true;
+          that.dragIntervall = $intervall;
+          that.startX = e.pageX;
+          that.startWidth = $intervall.width();
+          that.next = $(".timeline-intervall[data-index='" + (index + 1) + "']");
+          return that.nextStartWidth = that.next.width();
+        });
+      } else {
+        return $keyframe.toggleClass('timeline-keyframe');
+      }
+    };
+
+    TimelineView.prototype.render = function() {
+      var entry, i, index, len, ref, results, that;
+      this.$el.find('.timeline-intervall').remove();
+      this.isDragging = false;
+      this.dragIntervall;
+      this.startWidth = null;
+      this.startX = null;
+      this.next = null;
+      this.nextStartWidth = null;
+      that = this;
+      this.$el.mousemove(function(e) {
+        var delta;
+        if (that.isDragging) {
+          delta = e.pageX - that.startX;
+          that.dragIntervall.width(that.startWidth + delta);
+          return that.next.width(that.nextStartWidth - delta);
+        }
+      });
+      this.$el.mouseup(function(e) {
+        var end, index, model, nextIndex, nextModel;
+        if (that.isDragging) {
+          end = that.get_end(that.dragIntervall);
+          index = parseInt(that.dragIntervall.data('index'));
+          model = that.collection.models[index];
+          model.attributes.end = end;
+          model.save();
+          nextIndex = parseInt(that.next.data('index'));
+          nextModel = that.collection.models[nextIndex];
+          nextModel.attributes.start = end;
+          nextModel.save();
+          return that.isDragging = false;
+        }
+      });
+      this.$el.mouseleave(function(e) {
+        if (that.isDragging) {
+          that.dragIntervall.width(that.startWidth);
+        }
+        return this.isDragging = false;
+      });
+      ref = this.collection.models;
       results = [];
-      for (k = 0, len = errors.length; k < len; k++) {
-        ref = errors[k], field = ref[0], v = ref[1];
-        (this.$('[type=submit]')).prop('disabled', true);
-        (this.$(".control-group." + field)).addClass('warning');
-        results.push((this.$(".control-group." + field + " .controls")).append($("<span class='help-inline warning'>" + v + "</span>")));
+      for (index = i = 0, len = ref.length; i < len; index = ++i) {
+        entry = ref[index];
+        results.push(this.renderIntervall(entry, index));
       }
       return results;
     };
 
-    EditAssetView.prototype.cancel = function(e) {
-      this.model.rollback();
-      if (!this.edit) {
-        this.model.destroy();
-      }
-      return (this.$el.children(":first")).modal('hide');
-    };
+    return TimelineView;
 
-    EditAssetView.prototype.clickTabNavUri = function(e) {
-      if (!(this.$('#tab-uri')).hasClass('active')) {
-        (this.$('ul.nav-tabs li')).removeClass('active');
-        (this.$('.tab-pane')).removeClass('active');
-        (this.$('.tabnav-file_upload')).removeClass('active');
-        (this.$('#tab-file_upload')).removeClass('active');
-        (this.$('.tabnav-browse')).removeClass('active');
-        (this.$('#tab-browse')).removeClass('active');
-        (this.$('.tabnav-uri')).addClass('active');
-        (this.$('#tab-uri')).addClass('active');
-        (this.$f('uri')).focus();
-        this.$fv('uri', '');
-        this.$fv('mimetype', 'webpage');
-        this.validate();
-      }
-      return false;
-    };
+  })(DisposableView);
 
-    EditAssetView.prototype.clickTabNavUpload = function(e) {
-      if (!(this.$('#tab-file_upload')).hasClass('active')) {
-        (this.$('ul.nav-tabs li')).removeClass('active');
-        (this.$('.tab-pane')).removeClass('active');
-        (this.$('.tabnav-uri')).removeClass('active');
-        (this.$('#tab-uri')).removeClass('active');
-        (this.$('.tabnav-browse')).removeClass('active');
-        (this.$('#tab-browse')).removeClass('active');
-        (this.$('.tabnav-file_upload')).addClass('active');
-        (this.$('#tab-file_upload')).addClass('active');
-        this.$fv('uri', '');
-        this.$fv('mimetype', 'webpage');
-        this.validate();
-      }
-      return false;
-    };
+  API.View.ScheduleView = ScheduleView = (function(superClass) {
+    extend(ScheduleView, superClass);
 
-    EditAssetView.prototype.clickTabNavBrowse = function(e) {
-      if (!(this.$('#tab-browse')).hasClass('active')) {
-        (this.$('ul.nav-tabs li')).removeClass('active');
-        (this.$('.tab-pane')).removeClass('active');
-        (this.$('.tabnav-file_upload')).removeClass('active');
-        (this.$('#tab-file_upload')).removeClass('active');
-        (this.$('.tabnav-uri')).removeClass('active');
-        (this.$('#tab-uri')).removeClass('active');
-        (this.$('.tabnav-browse')).addClass('active');
-        (this.$('#tab-browse')).addClass('active');
-        this.$fv('uri', '/');
-        this.$fv('mimetype', 'dir');
-        this.validate();
-        this.updateFolderSelection('/', 'dir');
-      }
-      return false;
-    };
-
-    EditAssetView.prototype.clickFolder = function(e) {
-      var stat;
-      stat = JSON.parse($(e.target).data('stat'));
-      this.$fv('uri', stat['path']);
-      this.$fv('mimetype', stat['mime']);
-      this.validate();
-      return this.updateFolderSelection(stat['path'], stat['mime']);
-    };
-
-    EditAssetView.prototype.updateFolderSelection = function(path, mime) {
-      ($('#tab-browse.tab-pane')).find('.path').text(path);
-      if (mime === 'dir') {
-        return $.ajax('/api/filesystem' + path).success(function(files, status, xhr) {
-          ($('#tab-browse.tab-pane')).find('.files').empty();
-          return $.each(files, function(index, file) {
-            var li;
-            li = $('<li data-><img class="' + (file['mime'] === 'dir' ? 'dir' : 'file') + '"/>' + file.name + '</li>');
-            li.data('stat', JSON.stringify(file));
-            return ($('#tab-browse.tab-pane')).find('.files').append(li);
-          });
-        });
-      }
-    };
-
-    EditAssetView.prototype.updateUriMimetype = function() {
-      return _.defer((function(_this) {
-        return function() {
-          return _this.updateMimetype(_this.$fv('uri'));
-        };
-      })(this));
-    };
-
-    EditAssetView.prototype.updateFileUploadMimetype = function() {
-      return _.defer((function(_this) {
-        return function() {
-          return _this.updateMimetype(_this.$fv('file_upload'));
-        };
-      })(this));
-    };
-
-    EditAssetView.prototype.updateMimetype = function(filename) {
-      var mt;
-      mt = get_mimetype(filename);
-      (this.$('#file_upload_label')).text(get_filename(filename));
-      if (mt) {
-        this.$fv('mimetype', mt);
-      }
-      return this.change_mimetype();
-    };
-
-    return EditAssetView;
-
-  })(Backbone.View);
-
-  API.View.AssetRowView = AssetRowView = (function(superClass) {
-    extend(AssetRowView, superClass);
-
-    function AssetRowView() {
-      this.hidePopover = bind(this.hidePopover, this);
-      this.showPopover = bind(this.showPopover, this);
-      this["delete"] = bind(this["delete"], this);
-      this.edit = bind(this.edit, this);
-      this.setEnabled = bind(this.setEnabled, this);
-      this.toggleIsEnabled = bind(this.toggleIsEnabled, this);
-      this.render = bind(this.render, this);
+    function ScheduleView() {
+      this.close = bind(this.close, this);
+      this.changeName = bind(this.changeName, this);
+      this.enableSchedule = bind(this.enableSchedule, this);
+      this.deleteSchedule = bind(this.deleteSchedule, this);
+      this.reload = bind(this.reload, this);
       this.initialize = bind(this.initialize, this);
-      return AssetRowView.__super__.constructor.apply(this, arguments);
+      return ScheduleView.__super__.constructor.apply(this, arguments);
     }
 
-    AssetRowView.prototype.tagName = "tr";
-
-    AssetRowView.prototype.initialize = function(options) {
-      return this.template = get_template('asset-row');
+    ScheduleView.prototype.events = {
+      'change input.form-control[placeholder="name"]': 'changeName',
+      'click #enableSchedule': 'enableSchedule',
+      'click #deleteSchedule': 'deleteSchedule'
     };
 
-    AssetRowView.prototype.render = function() {
-      var json;
-      this.$el.html(this.template(_.extend(json = this.model.toJSON(), {
-        name: insertWbr(json.name)
-      })));
-      this.$el.prop('id', this.model.get('asset_id'));
-      (this.$(".delete-asset-button")).popover({
-        content: get_template('confirm-delete')
+    ScheduleView.prototype.initialize = function(attrs, options) {
+      var $button, event, i, len, ref, that;
+      that = this;
+      this.template = $("<div class='panel panel-success'> <div class='panel-heading clearfix'> <div class='panel-title pull-left'> Schedule </div> <div class='pull-right'> <button id='enableSchedule' type='button' class='btn btn-danger' title='Enable' style='display: inline-block'>Disabled</button> <button id='deleteSchedule' type='button' class='btn btn-danger' style='display: inline-block'>Remove</button> </div> </div> <div class='input-group'> <span class='input-group-addon'> Name </span> <input class='form-control' type='text' placeholder='name' value='" + this.model.attributes.name + "'/> </div> <div id='timeline'> <i id='timeline-tooltip' data-toggle='tooltip' data-placement='top' data-animation='false' data-trigger='manual'/> </div> </div>");
+      this.$el.html(this.template);
+      if (this.model.attributes.active) {
+        $button = this.template.find('#enableSchedule');
+        $button.removeClass('btn-danger');
+        $button.prop('disabled', true);
+        $button.addClass('btn-success');
+        $button.text('Enabled');
+        $button.attr('title', 'Enabled');
+      }
+      ref = 'add remove'.split(' ');
+      for (i = 0, len = ref.length; i < len; i++) {
+        event = ref[i];
+        this.model.attributes.entries.bind(event, this.reload);
+      }
+      return this.timeline = new TimelineView({
+        el: this.template.find('#timeline'),
+        collection: that.model.attributes.entries
       });
-      (this.$(".toggle input")).prop("checked", this.model.get('is_enabled'));
-      (this.$(".asset-icon")).addClass((function() {
-        switch (this.model.get("mimetype")) {
-          case "video":
-            return "icon-facetime-video";
-          case "image":
-            return "icon-picture";
-          case "webpage":
-            return "icon-globe";
-          case "slideshow":
-            return "icon-picture";
-          default:
-            return "";
+    };
+
+    ScheduleView.prototype.reload = function(e) {
+      return API.controller.showSchedule(this.model);
+    };
+
+    ScheduleView.prototype.deleteSchedule = function(e) {
+      var entry, event, i, len, ref;
+      ref = 'add remove'.split(' ');
+      for (i = 0, len = ref.length; i < len; i++) {
+        event = ref[i];
+        this.model.attributes.entries.unbind(event, this.reload);
+      }
+      while (entry = this.model.attributes.entries.first()) {
+        entry.destroy();
+      }
+      this.model.destroy();
+      return API.controller.unshowSchedule();
+    };
+
+    ScheduleView.prototype.enableSchedule = function(e) {
+      var $button, i, len, ref, results, schedule;
+      $button = $(e.currentTarget);
+      $button.removeClass('btn-danger');
+      $button.prop('disabled', true);
+      $button.addClass('btn-success');
+      $button.text('Enabled');
+      this.model.attributes.active = true;
+      this.model.save();
+      ref = this.model.collection.models;
+      results = [];
+      for (i = 0, len = ref.length; i < len; i++) {
+        schedule = ref[i];
+        if (schedule.attributes.active && schedule.attributes.id !== this.model.attributes.id) {
+          schedule.attributes.active = false;
+          results.push(schedule.save());
+        } else {
+          results.push(void 0);
         }
-      }).call(this));
-      return this.el;
-    };
-
-    AssetRowView.prototype.events = {
-      'change .is_enabled-toggle input': 'toggleIsEnabled',
-      'click .edit-asset-button': 'edit',
-      'click .delete-asset-button': 'showPopover'
-    };
-
-    AssetRowView.prototype.toggleIsEnabled = function(e) {
-      var save, val;
-      val = (1 + this.model.get('is_enabled')) % 2;
-      this.model.set({
-        is_enabled: val
-      });
-      this.setEnabled(false);
-      save = this.model.save();
-      save.done((function(_this) {
-        return function() {
-          return _this.setEnabled(true);
-        };
-      })(this));
-      save.fail((function(_this) {
-        return function() {
-          _this.model.set(_this.model.previousAttributes(), {
-            silent: true
-          });
-          _this.setEnabled(true);
-          return _this.render();
-        };
-      })(this));
-      return true;
-    };
-
-    AssetRowView.prototype.setEnabled = function(enabled) {
-      if (enabled) {
-        this.$el.removeClass('warning');
-        this.delegateEvents();
-        return (this.$('input, button')).prop('disabled', false);
-      } else {
-        this.hidePopover();
-        this.undelegateEvents();
-        this.$el.addClass('warning');
-        return (this.$('input, button')).prop('disabled', true);
       }
+      return results;
     };
 
-    AssetRowView.prototype.edit = function(e) {
-      new EditAssetView({
-        model: this.model,
-        edit: true
-      });
-      return false;
+    ScheduleView.prototype.changeName = function(e) {
+      this.model.attributes.name = $(e.target).val();
+      return this.model.save();
     };
 
-    AssetRowView.prototype["delete"] = function(e) {
-      var xhr;
-      this.hidePopover();
-      if ((xhr = this.model.destroy()) === !false) {
-        xhr.done((function(_this) {
-          return function() {
-            return _this.remove();
-          };
-        })(this));
-      } else {
-        this.remove();
-      }
-      return false;
+    ScheduleView.prototype.close = function() {
+      this.timeline.close();
+      return ScheduleView.__super__.close.call(this);
     };
 
-    AssetRowView.prototype.showPopover = function() {
-      if (!($('.popover')).length) {
-        (this.$(".delete-asset-button")).popover('show');
-        ($('.confirm-delete')).click(this["delete"]);
-        ($(window)).one('click', this.hidePopover);
-      }
-      return false;
-    };
+    return ScheduleView;
 
-    AssetRowView.prototype.hidePopover = function() {
-      (this.$(".delete-asset-button")).popover('hide');
-      return false;
-    };
+  })(DisposableView);
 
-    return AssetRowView;
+  API.View.SchedulesView = SchedulesView = (function(superClass) {
+    extend(SchedulesView, superClass);
 
-  })(Backbone.View);
-
-  API.View.AssetsView = AssetsView = (function(superClass) {
-    extend(AssetsView, superClass);
-
-    function AssetsView() {
+    function SchedulesView() {
       this.render = bind(this.render, this);
-      this.update_order = bind(this.update_order, this);
+      this.clickScheduleLink = bind(this.clickScheduleLink, this);
       this.initialize = bind(this.initialize, this);
-      return AssetsView.__super__.constructor.apply(this, arguments);
+      return SchedulesView.__super__.constructor.apply(this, arguments);
     }
 
-    AssetsView.prototype.initialize = function(options) {
-      var event, k, len, ref;
-      ref = 'reset add remove sync'.split(' ');
-      for (k = 0, len = ref.length; k < len; k++) {
-        event = ref[k];
-        this.collection.bind(event, this.render);
+    SchedulesView.prototype.events = {
+      'click .list-group-item': 'clickScheduleLink'
+    };
+
+    SchedulesView.prototype.initialize = function(attrs, options) {
+      var event, i, len, ref, results;
+      ref = 'sync add remove reset'.split(' ');
+      results = [];
+      for (i = 0, len = ref.length; i < len; i++) {
+        event = ref[i];
+        results.push(this.collection.bind(event, this.render));
       }
-      return this.sorted = (this.$('#active-assets')).sortable({
-        containment: 'parent',
-        axis: 'y',
-        helper: 'clone',
-        update: this.update_order
+      return results;
+    };
+
+    SchedulesView.prototype.clickScheduleLink = function(e) {
+      var entries, index, schedule;
+      index = $(e.currentTarget).data('schedule');
+      entries = new API.Entries();
+      schedule = this.collection.models[index];
+      entries.schedule_id = schedule.attributes.id;
+      return entries.fetch({
+        success: function(collection, response, options) {
+          schedule.set({
+            entries: collection
+          });
+          return API.controller.showSchedule(schedule);
+        }
       });
     };
 
-    AssetsView.prototype.update_order = function() {
-      var active, el, i, id, k, l, len, len1, ref;
-      active = (this.$('#active-assets')).sortable('toArray');
-      for (i = k = 0, len = active.length; k < len; i = ++k) {
-        id = active[i];
-        this.collection.get(id).set('play_order', i);
-      }
-      ref = (this.$('#inactive-assets tr')).toArray();
-      for (l = 0, len1 = ref.length; l < len1; l++) {
-        el = ref[l];
-        this.collection.get(el.id).set('play_order', active.length);
-      }
-      return $.post('/api/assets/order', {
-        ids: ((this.$('#active-assets')).sortable('toArray')).join(',')
-      });
-    };
-
-    AssetsView.prototype.render = function() {
-      var k, l, len, len1, ref, ref1, which;
-      this.collection.sort();
-      ref = ['active', 'inactive'];
-      for (k = 0, len = ref.length; k < len; k++) {
-        which = ref[k];
-        (this.$("#" + which + "-assets")).html('');
-      }
-      this.collection.each((function(_this) {
-        return function(model) {
-          which = model.active() ? 'active' : 'inactive';
-          return (_this.$("#" + which + "-assets")).append((new AssetRowView({
-            model: model
-          })).render());
+    SchedulesView.prototype.render = function() {
+      this.$el.empty();
+      return this.collection.each((function(_this) {
+        return function(model, index) {
+          var $schedule;
+          $schedule = $(("<a class='list-group-item' data-schedule='" + index + "' href='#'> <div class='schedule-row-title'> " + model.attributes.name + "&nbsp; </div> <div class='pull-right'>") + (model.attributes.active ? "<span class='label label-success'>Enabled</span>" : "<span class='label label-danger'>Disabled</span>") + "</div> </a>");
+          return _this.$el.append($schedule);
         };
       })(this));
-      ref1 = ['inactive', 'active'];
-      for (l = 0, len1 = ref1.length; l < len1; l++) {
-        which = ref1[l];
-        this.$("." + which + "-table thead").toggle(!!(this.$("#" + which + "-assets tr").length));
-      }
-      this.update_order();
-      return this.el;
     };
 
-    return AssetsView;
+    return SchedulesView;
 
-  })(Backbone.View);
+  })(DisposableView);
 
   API.App = App = (function(superClass) {
     extend(App, superClass);
@@ -748,7 +761,11 @@
       return App.__super__.constructor.apply(this, arguments);
     }
 
-    App.prototype.initialize = function() {
+    App.prototype.events = {
+      'click #schedule-add': 'add'
+    };
+
+    App.prototype.initialize = function(attrs, options) {
       ($(window)).ajaxError((function(_this) {
         return function(e, r) {
           var err, j;
@@ -763,28 +780,94 @@
           return ($('#request-error')).html('');
         };
       })(this));
-      (API.assets = new Assets()).fetch();
-      return API.assetsView = new AssetsView({
-        collection: API.assets,
-        el: this.$('#assets')
-      });
-    };
-
-    App.prototype.events = {
-      'click #add-asset-button': 'add'
+      (API.schedules = new Schedules()).fetch();
+      API.controller = new API.Controller;
+      return API.controller.showSchedules();
     };
 
     App.prototype.add = function(e) {
-      new EditAssetView({
-        model: new Asset({}, {
-          collection: API.assets
-        })
+      return API.schedules.create({
+        name: new Date,
+        entries: new Entries([])
+      }, {
+        success: function(model, response) {
+          model.attributes.entries.schedule_id = model.attributes.id;
+          return model.attributes.entries.create({
+            start: 0,
+            end: 24 * 3600,
+            directory: '/'
+          });
+        }
       });
-      return false;
     };
 
     return App;
 
-  })(Backbone.View);
+  })(DisposableView);
+
+  API.Controller = Controller = (function() {
+    function Controller() {
+      this.showEntry = bind(this.showEntry, this);
+      this.unshowEntry = bind(this.unshowEntry, this);
+      this.showSchedule = bind(this.showSchedule, this);
+      this.unshowSchedule = bind(this.unshowSchedule, this);
+      this.showSchedules = bind(this.showSchedules, this);
+    }
+
+    Controller.prototype.showSchedules = function() {
+      if (this.schedulesView) {
+        this.schedulesView.close();
+      }
+      this.schedulesView = new SchedulesView({
+        collection: API.schedules,
+        el: $('#schedules')
+      });
+      return this.schedulesView;
+    };
+
+    Controller.prototype.unshowSchedule = function() {
+      if (this.scheduleView) {
+        this.scheduleView.close();
+      }
+      if (this.entryView) {
+        this.entryView.close();
+      }
+      this.entryView = null;
+      return this.scheduleView = null;
+    };
+
+    Controller.prototype.showSchedule = function(schedule) {
+      this.unshowEntry();
+      if (this.scheduleView) {
+        this.scheduleView.close();
+      }
+      this.scheduleView = new ScheduleView({
+        model: schedule,
+        el: $('#schedule')
+      });
+      return this.scheduleView;
+    };
+
+    Controller.prototype.unshowEntry = function() {
+      if (this.entryView) {
+        this.entryView.close();
+      }
+      return this.entryView = null;
+    };
+
+    Controller.prototype.showEntry = function(entry, options) {
+      if (this.entryView) {
+        this.entryView.close();
+      }
+      this.entryView = new EntryView({
+        el: $('#entry'),
+        model: entry
+      }, options);
+      return this.entryView;
+    };
+
+    return Controller;
+
+  })();
 
 }).call(this);

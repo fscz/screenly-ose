@@ -22,10 +22,8 @@ from bottle import route, run, request, error, static_file, response
 from bottle import HTTPResponse
 from bottlehaml import haml_template
 
-from lib import db
-from lib import queries
-from lib import assets_helper
 from lib import diagnostics
+from lib.models import *
 
 from lib.utils import json_dump
 from lib.utils import get_node_ip
@@ -37,6 +35,9 @@ from dateutil import parser as date_parser
 
 from settings import settings, DEFAULTS, CONFIGURABLE_SETTINGS
 from werkzeug.wrappers import Request
+
+import json
+
 ################################
 # Utilities
 ################################
@@ -103,207 +104,6 @@ def template(template_name, **context):
 ################################
 # Model
 ################################
-
-
-################################
-# API
-################################
-
-def prepare_asset(request):
-
-    req = Request(request.environ)
-    data = None
-
-    data = json.loads(req.form['model']) if 'model' in req.form else req.form
-
-    def get(key):
-        val = data.get(key, '')
-        if isinstance(val, unicode):
-            return val.strip()
-        elif isinstance(val, basestring):
-            return val.strip().decode('utf-8')
-        else:
-            return val
-
-    if all([get('name'),
-            get('uri') or req.files.get('file_upload'),
-            get('mimetype')]):
-
-        asset = {
-            'name': get('name'),
-            'mimetype': get('mimetype'),
-            'asset_id': get('asset_id'),
-            'is_enabled': get('is_enabled'),
-            'nocache': get('nocache'),
-        }        
-
-        uri = get('uri') or False  
-        print(asset, uri)
-
-        if not asset['asset_id']:
-            asset['asset_id'] = uuid.uuid4().hex
-
-        try:
-            file_upload = req.files.get('file_upload')
-            filename = file_upload.filename
-        except AttributeError:
-            file_upload = None
-            filename = None
-
-        if filename and 'web' in asset['mimetype']:
-            raise Exception("Invalid combination. Can't upload a web resource.")
-
-        if uri and filename:
-            raise Exception("Invalid combination. Can't select both URI and a file.")
-
-        if uri and not uri.startswith('/'):
-            if not validate_url(uri):
-                raise Exception("Invalid URL. Failed to add asset.")
-            else:
-                asset['uri'] = uri
-        else:
-            asset['uri'] = uri
-
-        if filename:
-            asset['uri'] = path.join(settings['assetdir'], asset['asset_id'])
-
-            file_upload.save(asset['uri'])
-
-        if "video" in asset['mimetype']:
-            video_duration = get_video_duration(asset['uri'])
-            if video_duration:
-                asset['duration'] = int(video_duration.total_seconds())
-            else:
-                asset['duration'] = 'N/A'
-        else:
-            # Crashes if it's not an int. We want that.
-            asset['duration'] = int(get('duration'))
-
-        if not asset['asset_id']:
-            raise Exception
-
-        if not asset['uri']:
-            raise Exception
-
-        return asset
-    else:
-        raise Exception("Not enough information provided. Please specify 'name', 'uri', and 'mimetype'.")
-
-
-def get_file_info(file, path):
-    full_path = os.path.join(path, file)
-    stat_info = os.stat(full_path)
-
-    acc = dict()
-    acc['name'] = file
-    acc['path'] = full_path
-    acc['creation'] = stat_info.st_ctime
-    acc['modification'] = stat_info.st_mtime
-    acc['access'] = stat_info.st_atime
-    acc['size'] = stat_info.st_size
-
-    if stat.S_ISDIR(stat_info.st_mode):
-        acc['mime'] = 'dir'
-    elif stat.S_ISREG(stat_info.st_mode):
-        mime = get_mimetype(full_path)
-        if mime is not None:
-            acc['mime'] = mime
-
-    return acc
-
-def file_info_cmp(info1, info2):
-    if info1['mime'] == info2['mime']:    
-        return info1['name'] < info2['name']
-    elif info1['mime'] == 'dir' and not info2['mime'] == 'dir':
-        return -1
-    else:
-        return 1
-
-@route('/api/filesystem<path:path>', method="GET")
-def api_filesystem(path):
-    try:
-        contents = [{
-            'name': '..'
-            , 'path': os.path.abspath(os.path.join(path, '..'))
-            , 'mime': 'dir'
-            , 'creation': 0
-            , 'modification': 0
-            , 'access': 0
-            , 'size': 0
-        }] + sorted(
-                filter(
-                    lambda info: 'mime' in info and not info['name'].startswith('.'), 
-                        [get_file_info(f, path) for f in listdir(path)]), cmp=file_info_cmp)
-
-        return make_json_response(contents)
-    except Exception as e:
-        traceback.print_exc()
-        return api_error(unicode(e))    
-
-@route('/api/assets', method="GET")
-def api_assets():
-    with db.conn(settings['database']) as conn:
-        assets = assets_helper.read(conn)
-        return make_json_response(assets)
-
-
-# api view decorator. handles errors
-def api(view):
-    @wraps(view)
-    def api_view(*args, **kwargs):
-        try:
-            return make_json_response(view(*args, **kwargs))
-        except HTTPResponse:
-            raise
-        except Exception as e:
-            traceback.print_exc()
-            return api_error(unicode(e))
-    return api_view
-
-
-@route('/api/assets', method="POST")
-@api
-def add_asset():
-    asset = prepare_asset(request)
-    if url_fails(asset['uri']):
-        raise Exception("Could not retrieve file. Check the asset URL.")
-    with db.conn(settings['database']) as conn:
-        return assets_helper.create(conn, asset)
-
-
-@route('/api/assets/:asset_id', method="GET")
-@api
-def edit_asset(asset_id):
-    with db.conn(settings['database']) as conn:
-        return assets_helper.read(conn, asset_id)
-
-
-@route('/api/assets/:asset_id', method=["PUT", "POST"])
-@api
-def edit_asset(asset_id):
-    with db.conn(settings['database']) as conn:
-        return assets_helper.update(conn, asset_id, prepare_asset(request))
-
-
-@route('/api/assets/:asset_id', method="DELETE")
-@api
-def remove_asset(asset_id):
-    with db.conn(settings['database']) as conn:
-        asset = assets_helper.read(conn, asset_id)
-        try:
-            if asset['uri'].startswith(settings['assetdir']):
-                os.remove(asset['uri'])
-        except OSError:
-            pass
-        assets_helper.delete(conn, asset_id)
-        response.status = 204  # return an OK with no content
-
-
-@route('/api/assets/order', method="POST")
-@api
-def playlist_order():
-    with db.conn(settings['database']) as conn:
-        assets_helper.save_ordering(conn, request.POST.get('ids', '').split(','))
 
 
 ################################
@@ -403,6 +203,278 @@ def mistake404(code):
 
 
 ################################
+# API
+################################
+def load_model(request):
+    return json.loads(Request(request.environ).form['model'].strip().decode('utf-8'))        
+
+def prepare_asset(request):
+
+    req = Request(request.environ)
+    data = None
+
+    data = json.loads(req.form['model']) if 'model' in req.form else req.form
+
+    def get(key):
+        val = data.get(key, '')
+        if isinstance(val, unicode):
+            return val.strip()
+        elif isinstance(val, basestring):
+            return val.strip().decode('utf-8')
+        else:
+            return val
+
+    if all([get('name'),
+            get('uri') or req.files.get('file_upload'),
+            get('mimetype')]):
+
+        asset = {
+            'name': get('name'),
+            'mimetype': get('mimetype'),
+            'asset_id': get('asset_id'),
+            'is_enabled': get('is_enabled'),
+            'nocache': get('nocache'),
+        }        
+
+        uri = get('uri') or False  
+
+        if not asset['asset_id']:
+            asset['asset_id'] = uuid.uuid4().hex
+
+        try:
+            file_upload = req.files.get('file_upload')
+            filename = file_upload.filename
+        except AttributeError:
+            file_upload = None
+            filename = None
+
+        if filename and 'web' in asset['mimetype']:
+            raise Exception("Invalid combination. Can't upload a web resource.")
+
+        if uri and filename:
+            raise Exception("Invalid combination. Can't select both URI and a file.")
+
+        if uri and not uri.startswith('/'):
+            if not validate_url(uri):
+                raise Exception("Invalid URL. Failed to add asset.")
+            else:
+                asset['uri'] = uri
+        else:
+            asset['uri'] = uri
+
+        if filename:
+            asset['uri'] = path.join(settings['assetdir'], asset['asset_id'])
+
+            file_upload.save(asset['uri'])
+
+        if "video" in asset['mimetype']:
+            video_duration = get_video_duration(asset['uri'])
+            if video_duration:
+                asset['duration'] = int(video_duration.total_seconds())
+            else:
+                asset['duration'] = 'N/A'
+        else:
+            # Crashes if it's not an int. We want that.
+            asset['duration'] = int(get('duration'))
+
+        if not asset['asset_id']:
+            raise Exception
+
+        if not asset['uri']:
+            raise Exception
+
+        return asset
+    else:
+        raise Exception("Not enough information provided. Please specify 'name', 'uri', and 'mimetype'.")
+
+
+def get_file_info(file, path):
+    full_path = os.path.join(path, file)
+    stat_info = os.stat(full_path)
+
+    acc = dict()
+    acc['name'] = file
+    acc['path'] = full_path
+    acc['creation'] = stat_info.st_ctime
+    acc['modification'] = stat_info.st_mtime
+    acc['access'] = stat_info.st_atime
+    acc['size'] = stat_info.st_size
+
+    if stat.S_ISDIR(stat_info.st_mode):
+        acc['mime'] = 'dir'
+    elif stat.S_ISREG(stat_info.st_mode):
+        mime = get_mimetype(full_path)
+        if mime is not None:
+            acc['mime'] = mime
+
+    return acc
+
+def file_info_cmp(info1, info2):
+    if info1['mime'] == info2['mime']:    
+        if info1['name'] < info2['name']:
+           return -1
+        else:
+            return 1 
+    elif info1['mime'] == 'dir' and not info2['mime'] == 'dir':
+        return -1
+    else:
+        return 1 
+
+# api view decorator. handles errors
+def api(view):
+    @wraps(view)
+    def api_view(*args, **kwargs):
+        try:
+            return make_json_response(view(*args, **kwargs))
+        except HTTPResponse:
+            raise
+        except Exception as e:
+            traceback.print_exc()
+            return api_error(unicode(e))
+    return api_view
+
+@route('/api/directory', method="GET")
+def api_filesystem():
+    try:
+        path = request.query['path']
+        contents = [{
+            'name': '..'
+            , 'path': os.path.abspath(os.path.join(path, '..'))
+            , 'mime': 'dir'
+            , 'creation': 0
+            , 'modification': 0
+            , 'access': 0
+            , 'size': 0
+        }] + sorted(
+                filter(
+                    lambda info: 'mime' in info and not info['name'].startswith('.'), 
+                        [get_file_info(f, path) for f in listdir(path)]), cmp=file_info_cmp)        
+        
+        return json.dumps(contents)
+    except Exception as e:
+        traceback.print_exc()
+        return api_error(unicode(e))  
+
+
+@route('/api/schedules', method="GET")
+@api
+def get_schedules():
+    return list(Schedule.select())
+
+@route('/api/schedules/:schedule_id', method="GET")
+@api
+def get_schedule(schedule_id):
+    try:        
+        schedule = Schedule.get(schedule_id)
+        return schedule
+    except Exception as e:
+        traceback.print_exc()
+        return api_error(unicode(e)) 
+
+@route('/api/schedules', method="POST")
+@api
+def add_schedule():
+    model = load_model(request)
+    return Schedule(name=model['name'])    
+
+@route('/api/schedules/:schedule_id', method="PUT")
+@api
+def edit_schedule(schedule_id):
+    try:        
+        schedule = Schedule.get(schedule_id)        
+        model = load_model(request)
+        schedule.set(name=model['name'], active=model['active'])
+        return schedule
+    except Exception as e:
+        traceback.print_exc()
+        return api_error(unicode(e)) 
+
+@route('/api/schedules/:schedule_id', method="DELETE")
+@api
+def delete_schedule(schedule_id):   
+    try: 
+        Schedule.delete(schedule_id)
+        return dict()
+    except Exception as e:
+        traceback.print_exc()
+        return api_error(unicode(e)) 
+
+@route('/api/schedules/:schedule_id/entries', method="GET")
+@api
+def get_entries(schedule_id):
+    try:
+        return list(Entry.select(Entry.q.schedule==schedule_id, orderBy='start'))
+    except Exception as e:
+        traceback.print_exc()
+        return api_error(unicode(e)) 
+
+@route('/api/schedules/:schedule_id/entries/:entry_id', method="GET")
+@api
+def get_entries(schedule_id, entry_id):
+    try:
+        entry = Entry.get(entry_id)
+        if entry.schedule_id == schedule_id:
+            return entry
+        else:
+            raise Exception("Entry "+entry_id+" does not belong to schedule "+schedule_id)
+
+    except Exception as e:
+        traceback.print_exc()
+        return api_error(unicode(e)) 
+
+@route('/api/schedules/:schedule_id/entries', method="POST")
+@api
+def create_entry(schedule_id):
+    try: 
+        schedule = Schedule.get(schedule_id)
+        model = load_model(request)    
+        return Entry(name=model['name'], 
+            directory=model['directory'], 
+            start=model['start'], 
+            end=model['end'], 
+            schedule=schedule)
+
+    except Exception as e:
+        traceback.print_exc()
+        return api_error(unicode(e)) 
+
+@route('/api/schedules/:schedule_id/entries/:entry_id', method="PUT")
+@api
+def edit_entry(schedule_id, entry_id):        
+    try: 
+        schedule = Schedule.get(schedule_id)
+        model = load_model(request)
+        entry = Entry.get(entry_id)
+        if entry.schedule.id == schedule.id:
+            entry.set(name=model['name'], 
+                    directory=model['directory'], 
+                    start=model['start'], 
+                    end=model['end'], 
+                    schedule=schedule)
+            return entry
+        else:
+            raise Exception("Entry "+entry_id+" does not belong to schedule "+schedule_id)
+    except Exception as e:
+        traceback.print_exc()
+        return api_error(unicode(e)) 
+
+@route('/api/schedules/:schedule_id/entries/:entry_id', method="DELETE")
+@api
+def delete_entry(schedule_id, entry_id):
+    try:
+        schedule = Schedule.get(schedule_id)
+        entry = Entry.get(entry_id)
+        if entry.schedule.id == schedule.id:
+            entry.destroySelf()
+            return entry
+        else:
+            raise Exception("Entry "+entry_id+" does not belong to schedule "+schedule_id)
+    except Exception as e:
+        traceback.print_exc()
+        return api_error(unicode(e)) 
+
+
+################################
 # Static
 ################################
 
@@ -411,7 +483,23 @@ def static(path):
     return static_file(path, root='static')
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  
+    '''
+    schedules = list(Schedule.select(Schedule.q.name=="first_schedule"))
+    entries = list(Entry.select(Entry.q.schedule==schedules[0]))
+    entries[0].set(start=0, end=2 * 60 * 60)    
+    entries[1].set(start=2 * 60 * 60, end=4 * 60 * 60)
+    '''
+
+    '''
+    schedule1 = Schedule(name="first_schedule")
+    Entry(name="en1", directory="/home/romy1", start=0, end=2, schedule=schedule1)
+    Entry(name="en2", directory="/home/romy2", start=2, end=5, schedule=schedule1)
+
+    schedule2 = Schedule(name="second_schedule")
+    Entry(name="en3", directory="/home/romy3", start=0, end=2, schedule=schedule2)
+    Entry(name="en4", directory="/home/romy4", start=2, end=5, schedule=schedule2)
+    '''
     # Make sure the asset folder exist. If not, create it
     if not path.isdir(settings['assetdir']):
         mkdir(settings['assetdir'])
@@ -419,11 +507,6 @@ if __name__ == "__main__":
     if not path.isdir(settings.get_configdir()):
         makedirs(settings.get_configdir())
 
-    with db.conn(settings['database']) as conn:
-        with db.cursor(conn) as cursor:
-            cursor.execute(queries.exists_table)
-            if cursor.fetchone() is None:
-                cursor.execute(assets_helper.create_assets_table)
 
     run(
         host=settings.get_listen_ip(),

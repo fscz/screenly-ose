@@ -27,9 +27,9 @@
     %meta(name="msapplication-wide310x150logo", content="/static/favicons/mstile-310x150.png")
     %meta(name="msapplication-square310x310logo", content="/static/favicons/mstile-310x310.png")
 
-    %link(href="/static/css/bootstrap.css", rel="stylesheet")
-    %link(href="/static/css/toggle-switch.css", rel="stylesheet")
+    %link(href="/static/css/bootstrap.min.css", rel="stylesheet")
     %link(href="/static/css/screenly.css", rel="stylesheet")
+    
 
     :javascript
       var default_duration = ${default_duration};
@@ -37,162 +37,31 @@
 
     %script(src="/static/js/underscore-1.4.3.min.js")
 
-    %script(src="/static/js/jquery-1.9.1.min.js")
-    %script(src="/static/js/jquery.iframe-transport.js")
+    %script(src="/static/js/jquery-3.1.1.min.js")
 
-    %script(src="/static/js/backbone-0.9.10.min.js") /needs jquery
-
-    %script(src="/static/js/jquery-ui-1.10.1.custom.min.js")
-    %script(src="/static/js/jquery.fileupload.js") /needs jqueryui.widget
+    %script(src="/static/js/backbone-min.js") /needs jquery
 
     %script(src="/static/js/bootstrap.min.js") /needs jquery
+    %script(src="/static/js/bootstrap-contextMenu.js") /needs jquery
 
-    %script(src="/static/js/screenly-ose.js")
-    %script(src="/static/js/main.js")
-
-    %script(type="text/template", id="asset-row-template")
-      %td.asset_row_name
-        %img(src="static/img/drag-handle.png")
-        %i.asset-icon
-        :plain
-          <%= name %>
-      %td(style="width:42%")
-        :plain
-          <%= duration %>
-      %td.asset_row_btns(style="width:13%")
-        %button.edit-asset-button.btn(type="button")
-          %i.icon-pencil
-        %button.delete-asset-button.btn(type="button", dataTitle="Are you sure?", dataPlacement="left", dataHtml="true", dataTrigger="manual")
-          %i.icon-trash
-      %td(style="width:7%")
-        %label.is_enabled-toggle.checkbox.toggle.well
-          %input(type="checkbox")
-          %p
-            %span.on On
-            %span.off Off
-          %a.slide-button.btn.btn-primary
-
-    %script(type="text/template", id="confirm-delete-template")
-      .clearfix
-        .pull-left
-          %a.confirm-delete.btn.btn-medium.btn-danger(href="#") Delete
-        .pull-right
-          %a.cancel-delete.btn.btn-medium(href="#") Cancel
-
-    %script(type="text/template", id="request-error-template")
-      .container
-        .alert.alert-error
-          %button.close(type="button", dataDismiss="alert") &times;
-          %span.msg
-            The operation failed. Please reload the page and try again.
-
-
-    %script(type="text/template", id="asset-modal-template")
-      .modal.hide.fade(tabindex="-1", role="dialog", ariaLabelledby="myModalLabel", ariaHidden="true")
-        %form.form-horizontal#add-form
-          .modal-header
-            %h3#modalLabel Add Asset
-          .modal-body
-            %fieldset
-              .control-group.name
-                %label.control-label Name
-                .controls
-                  %input.span4(type="text", name="name", placeholder="Nickname for this asset")
-            .asset-location.add
-              %fieldset
-                .tabbable
-                  %ul.nav.nav-tabs
-                    %li.active.tabnav-uri(style="margin-left:180px")
-                      %a(href="#tab-uri", dataToggle="tab") URL
-                    %li.tabnav-file_upload
-                      %a(href="#tab-file_upload", dataToggle="tab") Upload
-                    %li.tabnav-browse
-                      %a(href="#tab-browse", dataToggle="tab") Browse
-                  .tab-content
-                    #tab-uri.tab-pane.active
-                      .control-group.uri
-                        %label.control-label Asset URL
-                        .controls
-                          %input.span4(type="text", name="uri", placeholder="Public URL to this asset's location")
-                    #tab-file_upload.tab-pane
-                      .control-group
-                        %label.control-label Upload Asset
-                        .controls
-                          %div
-                            %button.btn Choose file
-                            %input(type="file", name="file_upload")
-                          #file_upload_label
-                    #tab-browse.tab-pane                        
-                      %fieldset                        
-                        %div.path
-                        %ul.files
-
-                        
-            .asset-location.edit(style="display:none")
-              %fieldset
-                .control-group
-                  %label.control-label Asset Location
-                  .controls
-                    .uri-text.span4.first
-            
-            %fieldset
-              %input(type="hidden", name="mimetype")
-
-            %hr
-            %fieldset
-              .control-group.duration
-                %label.control-label Duration
-                .controls
-                  %input.span1(type="number", name="duration")
-                  seconds
-                  &nbsp;
-                  %span.muted.zerohint(style="display:none") use 0 to autodetect video length
-
-
-          .modal-footer
-            .pull-left.progress.progress-striped.active(style="display:none")
-              .bar
-            %input.btn.cancel(type="button", value="Cancel")
-            %input.btn.btn-primary(id="save-asset", type="submit", value="Save")
-
-    %script(type="text/template", id="subscribe-form-template")
-      %div#subscribe-popover.popover.top(style="display:block")
-        %div.arrow
-        %div.popover-content
-          %form.validate(action="//wireload.us1.list-manage.com/subscribe/post?u=adb4f752497b0d86b3b1b79d7&id=5c47388076", method="post", name="mc-embedded-subscribe-form", target="_blank", style="margin-bottom:5px")
-            .mc-field-group
-              %label(**{'for': 'mce-EMAIL'})
-                Email Address
-                %span.asterisk *
-              %input#mce-EMAIL.required.email(name="EMAIL", type="email", **{'required' : True})
-            .mc-field-group
-              %label(**{'for': 'mce-FNAME'}) First Name
-              %input#mce-FNAME(name="FNAME", type="text")
-            .mc-field-group
-              %label(**{'for': 'mce-LNAME'}) Last Name
-              %input#mce-LNAME(name="LNAME", type="text")
-
-            / real people should not fill this in and expect good things - do not remove this or risk form bot signups
-            %div(style="position absolute; left -5000px;", hidden="true")
-              %input(name="b_adb4f752497b0d86b3b1b79d7_5c47388076", tabindex="-1", type="text")
-
-            %input#mc-embedded-subscribe.button(class_="btn", name="subscribe", type="submit", value="Subscribe")
-
+    %script(src="/static/js/screenly-ose.js")    
+    
 
   %body
-    #request-error.navbar.navbar-fixed-top
-    .navbar.navbar-fixed-top
-      .navbar-inner
-        .container
-          %a.brand(href="/")
-            %img(src='static/img/screenly_ose_logo.png')
-
-          %ul.nav.pull-right
-            - if not up_to_date:
-              %li.update-available
-                %a(href="http://www.screenlyapp.com/ose.html#upgrade")
-                  %i.icon-circle-arrow-down.icon-white
-                  Update Available
+    %nav.navbar.navbar-inverse.navbar-fixed-top
+      .container
+        .navbar-header
+          %button.navbar-toggle.collapsed(type="button", dataToggle="collapse", dataTarget="#navbar", ariaExpanded="false", ariaControls="navbar")
+            %span.sr-only
+              Toggle navigation
+            %span.icon-bar
+            %span.icon-bar
+            %span.icon-bar
+          %a.navbar-brand(href="/")
+            %img(src='static/img/screenly_ose_logo.png', height="30px")
+        #navbar.navbar-collapse.collapse
+          %ul.nav.navbar-nav
+          %ul.nav.navbar-nav.navbar-right
             %li
               %a(href="/settings")
                 %i.icon-cog.icon-white
@@ -202,55 +71,22 @@
               %a(href="/system_info")
                 %i.icon-tasks.icon-white
                 System Info
-
-    .container
+    .container          
       .row
-        .span12
-          %h1.page-header
-            .pull-right
-              %a#add-asset-button.btn.btn-primary(href="#")
-                %i.icon-plus.icon-white
-                Add Asset
-            Schedule Overview
+        .col-md-9#schedule
+          
+        .col-md-3
+          .panel.panel-success
+            .panel-heading.clearfix
+              %h3.panel-title.pull-left                
+                Schedules
+              .btn-group.pull-right
+                %a#schedule-add.btn.btn-default(href="#")
+                  %span.glyphicon.glyphicon-plus.white
+            #schedules.list-group
 
-      #assets.row
-        .span12
-          %section
-            .header
-              Active assets
-            %table.table.table-striped.active-table
-              %thead(style="display:none")
-                %tr
-                  %th.asset_row_name Name
-                  %th(style="width:42%") Duration
-                  %th(style="width:13%")
-                  %th(style="width:7%")
-              %tbody#active-assets
-        .span12
-          %section
-            .header
-              Inactive assets
-            %table.table.table-striped.inactive-table
-              %thead(style="display:none")
-                %tr
-                  %th.asset_row_name Name
-                  %th(style="width:42%") Duration
-                  %th(style="width:13%")
-                  %th(style="width:7%")
-              %tbody#inactive-assets
-
-      %hr
-      .container
-        .row
-            .span6
-              %span Want to get more out of Screenly?
-                %a.brand(href="http://www.screenlyapp.com/?utm_source=Screenly-OSE&utm_medium=root-page&utm_campaign=OSE", target="_blank")
-                  %strong Try Screenly Pro.
-            .span6
-              %div#subsribe-form-container
-              %span
-                %a
-                  %strong#show-email-popover Get the latest Screenly news directly in your mailbox.
+      .row
+        .col-md-9#entry
 
     #footer
       .container
@@ -258,3 +94,4 @@
           &copy; <strong>2012-2016.</strong> WireLoad, Inc.
         %a(id="wireload-logo", href="http://wireload.net/", target="_blank")
           %img(src="/static/img/wireload-logo.png", alt="WireLoad")
+    %script(src="/static/js/main.js")

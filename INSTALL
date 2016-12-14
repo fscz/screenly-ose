@@ -1,0 +1,30 @@
+digital-signage@star/trac install guide
+
+1 Screenly Image Installieren
+- https://www.screenly.io/ose/
+
+
+2 Aktuellen Programmcode installieren
+- copy fs@mail.star-trac.de:screenly to raspberry:/home/pi/screenly
+
+
+3 Dependencies auf raspberry installieren
+- sudo apt-get install libmagic-dev mplayer
+- sudo pip install -r ~/screenly/requirements.txt
+
+
+4 Services neu starten
+- sudo service screenly-viewer restart
+- sudo service screenly-web restart
+
+
+5 Configuration via Web-Interface 
+- http://<raspberry-ip>:8080
+
+
+Troubleshooting:
+- unter /var/log/daemon.log gibt es ein logfile, das in der regel schlau macht
+- unter /home/pi/.screenly/screenly.db liegt eine sqlite db, die man loeschen kann fuer einen datenreset
+- unter /home/pi/screenly_assets liegen dateien, die man ueber das web interface hoch geladen hat
+copy source to 
+sudo pip install -r requirements.txt

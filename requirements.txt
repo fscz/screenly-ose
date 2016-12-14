@@ -21,3 +21,4 @@ werkzeug==0.10.4
 wsgiref==0.1.2
 futures==3.0.5
 https://github.com/ahupp/python-magic/archive/0.4.12.zip
+sqlobject==3.1.0

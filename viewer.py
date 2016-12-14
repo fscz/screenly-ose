@@ -13,12 +13,13 @@ from signal import signal, SIGUSR1, SIGUSR2
 import logging
 import sh
 import urllib
+import threading
 
 from settings import settings
 import html_templates
-from lib.utils import url_fails, get_mimetype
-from lib import db
-from lib import assets_helper
+from lib.utils import url_fails, get_mimetype, get_video_duration
+from lib.models import *
+
 
 
 __author__ = "WireLoad Inc"
@@ -38,13 +39,11 @@ INTRO = '/screenly/intro-template.html'
 
 current_browser_url = None
 browser = None
+home = None
 
-VIDEO_TIMEOUT = 20  # secs
 
-HOME = None
-arch = None
-db_conn = None
-
+WEBPAGE_TIMEOUT = 30 # secs
+IMAGE_TIMEOUT = 30 # secs
 
 def sigusr1(signum, frame):
     """
@@ -61,85 +60,8 @@ def sigusr2(signum, frame):
     load_settings()
 
 
-class Scheduler(object):
-    def __init__(self, *args, **kwargs):
-        logging.debug('Scheduler init')
-        self.assets = []
-        self.deadline = None
-        self.index = 0
-        self.counter = 0
-        self.update_playlist()
-
-    def get_next_asset(self):
-        logging.debug('get_next_asset')
-        self.refresh_playlist()
-        logging.debug('get_next_asset after refresh')
-        if not self.assets:
-            return None
-        idx = self.index
-        self.index = (self.index + 1) % len(self.assets)
-        logging.debug('get_next_asset counter %s returning asset %s of %s', self.counter, idx + 1, len(self.assets))
-        if settings['shuffle_playlist'] and self.index == 0:
-            self.counter += 1
-        return self.assets[idx]
-
-    def refresh_playlist(self):
-        logging.debug('refresh_playlist')
-        time_cur = datetime.utcnow()
-        logging.debug('refresh: counter: (%s) deadline (%s) timecur (%s)', self.counter, self.deadline, time_cur)
-        if self.get_db_mtime() > self.last_update_db_mtime:
-            logging.debug('updating playlist due to database modification')
-            self.update_playlist()
-        elif settings['shuffle_playlist'] and self.counter >= 5:
-            self.update_playlist()
-        elif self.deadline and self.deadline <= time_cur:
-            self.update_playlist()
-
-    def update_playlist(self):
-        logging.debug('update_playlist')
-        self.last_update_db_mtime = self.get_db_mtime()
-        new_assets = generate_asset_list()
-        if new_assets == self.assets:
-            # If nothing changed, don't disturb the current play-through.
-            return
-
-        self.assets = new_assets
-        self.counter = 0
-        # Try to keep the same position in the play list. E.g. if a new asset is added to the end of the list, we
-        # don't want to start over from the beginning.
-        self.index = self.index % len(self.assets) if self.assets else 0
-        logging.debug('update_playlist done, count %s, counter %s, index %s', len(self.assets), self.counter, self.index)
-
-    def get_db_mtime(self):
-        # get database file last modification time
-        try:
-            return path.getmtime(settings['database'])
-        except:
-            return 0
-
-
-def generate_asset_list():
-    logging.info('Generating asset-list...')
-    assets = assets_helper.read(db_conn)
-
-    playlist = filter(assets_helper.is_active, assets)
-
-    if settings['shuffle_playlist']:
-        shuffle(playlist)
-
-    return playlist
-
-
-def watchdog():
-    """Notify the watchdog file to be used with the watchdog-device."""
-    if not path.isfile(WATCHDOG_PATH):
-        open(WATCHDOG_PATH, 'w').close()
-    else:
-        utime(WATCHDOG_PATH, None)
-
-
-def load_browser(url=None):
-    global browser, current_browser_url
+def load_browser(url):
+    global browser, current_browser_url, home
     logging.info('Loading browser...')
 
     if browser:
@@ -155,7 +77,7 @@ def load_browser(url=None):
     logging.info('Browser loading %s. Running as PID %s.', current_browser_url, browser.pid)
 
     uzbl_rc = 'set ssl_verify = {}\n'.format('1' if settings['verify_ssl'] else '0')
-    with open(HOME + UZBLRC) as f:  # load uzbl.rc
+    with open(home + UZBLRC) as f:  # load uzbl.rc
         uzbl_rc = f.read() + uzbl_rc
     browser_send(uzbl_rc)
 
@@ -178,32 +100,34 @@ def browser_clear():
     """Load a black page. Default cb waits for the page to load."""
     browser_send('uri ' + 'file://' + BLACK_PAGE, cb=lambda buf: 'LOAD_FINISH' in buf and BLACK_PAGE in buf)
 
-def view_url(url, asset, cb=lambda _: True, force=False):
+def view_url(url, cb=lambda _: True, force=False):
     global current_browser_url
+    logging.info("view_url: %s" % url)
 
     if url == current_browser_url and not force:
-        logging.debug('Already showing %s, reloading it.', current_browser_url)
+        logging.info('Already showing %s, not doing anything.', current_browser_url)
     else:
         current_browser_url = url
         browser_send('uri ' + current_browser_url, cb=cb)
-        logging.info('current url is %s', current_browser_url)
-
-    duration = int(asset['duration'])
-    logging.info('Sleeping for %s', duration)
-    sleep(duration)
 
 
-def view_image(uri, duration):
-    uri = urllib.quote(uri)
-    logging.info("view_image: %s" % uri)
-    browser_clear()
-    browser_send('js window.setimg("{0}")'.format(uri), cb=lambda b: 'COMMAND_EXECUTED' in b and 'setimg' in b)
-    logging.info('Sleeping for %s', duration)
-    sleep(duration)
+def view_image(url, cb=lambda _: True, force=False):    
+    global current_browser_url    
+    logging.info("view_image: %s" % url)
 
-def view_video(uri, asset):
-    duration = asset['duration']
-    logging.debug('Displaying video %s for %s ', uri, duration)
+    url = urllib.quote(url)    
+
+    if url == current_browser_url and not force:
+        logging.info('Already showing %s, not doing anything.', current_browser_url)
+    else:
+        current_browser_url = url
+        browser_send('js window.setimg("{0}")'.format(url), cb=lambda b: 'COMMAND_EXECUTED' in b and 'setimg' in b)
+
+    
+
+def view_video(uri):
+    logging.info('view_video (%s)', uri)
+    arch = machine()
 
     if arch in ('armv6l', 'armv7l'):
         player_args = ['omxplayer', uri]
@@ -213,160 +137,145 @@ def view_video(uri, asset):
         player_args = ['mplayer', uri, '-nosound']
         player_kwargs = {'_bg': True}
 
-    if duration and duration != 'N/A':
-        player_args = ['timeout', VIDEO_TIMEOUT + int(duration.split('.')[0])] + player_args
 
     run = sh.Command(player_args[0])(*player_args[1:], **player_kwargs)
 
-    browser_clear(force=True)
-    while run.process.alive:
-        watchdog()
+    browser_clear()
+    while run.process.alive:        
         sleep(1)
     if run.exit_code == 124:
         logging.error('omxplayer timed out')
 
-def view_directory(uri, asset):    
-    duration = int(asset['duration'])
-    def is_image(f):
-        if path.isfile(f):
-            mime = get_mimetype(f)
-            if mime is not None and 'image' in mime:
-                return True
-        return False
-    images = [path.join(uri, f) for f in os.listdir(uri) if is_image(path.join(uri, f))]
-    if len(images) > 0:
-        image_duration=5.0
-        while True:            
-            shuffle(images)
-            image = images[0]
 
-            duration -= image_duration
+class ViewThread(threading.Thread):
+    def __init__(self, entry):
+        super(ViewThread, self).__init__()
+        self.entry = entry
+        self.loopTime = 1
+        self.__stop = threading.Event()
 
-            view_image(image, image_duration)            
 
-            if duration > 0:
-                sleep(image_duration)
-            else:
-                break
+    def stop(self):
+        self.__stop.set()
+        self.join()
 
-def check_update():
-    """
-    Check if there is a later version of Screenly OSE
-    available. Only do this update once per day.
-    Return True if up to date was written to disk,
-    False if no update needed and None if unable to check.
-    """
+    def run(self):
+        directory = self.entry.directory
+        files = [path.join(directory, f) for f in os.listdir(directory) if path.isfile(path.join(directory, f))]
 
-    sha_file = path.join(settings.get_configdir(), 'latest_screenly_sha')
-
-    if path.isfile(sha_file):
-        sha_file_mtime = path.getmtime(sha_file)
-        last_update = datetime.fromtimestamp(sha_file_mtime)
-    else:
-        last_update = None
-
-    logging.debug('Last update: %s' % str(last_update))
-
-    git_branch = sh.git('rev-parse', '--abbrev-ref', 'HEAD')
-    if last_update is None or last_update < (datetime.now() - timedelta(days=1)):
-
-        if not url_fails('http://stats.screenlyapp.com'):
-            latest_sha = req_get('http://stats.screenlyapp.com/latest/{}'.format(git_branch))
-
-            if latest_sha.status_code == 200:
-                with open(sha_file, 'w') as f:
-                    f.write(latest_sha.content.strip())
-                return True
-            else:
-                logging.debug('Received non 200-status')
-                return
+        num_files = len(files)
+        
+        if num_files == 0:
+            load_browser(url='http://{0}:{1}/splash_page'.format(settings.get_listen_ip(), settings.get_listen_port()) if settings['show_splash'] else 'file://' + BLACK_PAGE)
+            while not self.__stop.isSet(): 
+                sleep(self.loopTime)            
         else:
-            logging.debug('Unable to retrieve latest SHA')
-            return
-    else:
-        return False
+            num = 0
+            currentEntryDuration = 0
+            mime = None
+            file = None
+            isNew = True
+            while not self.__stop.isSet():            
+                logging.info("worker still waiting %d seconds for %s" % (currentEntryDuration, file))
+                if currentEntryDuration <= 0: 
+                    sh.killall('omxplayer.bin', _ok_code=[1])
 
+                    file = files[num]                
+                    mime = get_mimetype(file)
+                    num = (num+1) % num_files
+                    if mime is not None:
+                        if 'image' in mime:
+                            currentEntryDuration = IMAGE_TIMEOUT
+                            view_image(file, force=isNew)
+                            isNew = False
+                        elif 'text' in mime: 
+                            currentEntryDuration = WEBPAGE_TIMEOUT
+                            with open(file, 'r') as urlfile:
+                                try:
+                                    view_url(urlfile.readlines()[0].replace('\n', ''),force=isNew)                                                        
+                                except Exception as e:
+                                    logging.error('cannot show text file: %s, error: %s' % (file, e))  
+                            isNew = False
+                        elif 'video' in mime:
+                            currentEntryDuration = get_video_duration(file)
+                            view_video(file)                            
+                        else:
+                            # cannot show this entry, so skip
+                            logging.info('mimetype (%s) of file (%s) not supported.' % (mime, file))
+                            mime = None
+                            currentEntryDuration = 0
+                    else:
+                        logging.info('cannot show suspect file: %s' % file)    
+                    
 
-def load_settings():
-    """Load settings and set the log level."""
-    settings.load()
-    logging.getLogger().setLevel(logging.DEBUG if settings['debug_logging'] else logging.INFO)
+                sleep(self.loopTime)
+                currentEntryDuration -= self.loopTime     
 
+class Viewer(object):
 
-def process_playlist(scheduler):
-    logging.debug('Start playlist loop.')
-    while True:
-        check_update()
-        asset = scheduler.get_next_asset()
+    def __init__(self):
+        global home
+        home = getenv('HOME', '/home/pi')
+        self.currentId = None
+        self.currentDirectory = None
+        self.worker = None
 
-        if asset is None:
-            logging.info('Playlist is empty. Sleeping for %s seconds', EMPTY_PL_DELAY)
-            view_image(HOME + LOAD_SCREEN, EMPTY_PL_DELAY)
+        signal(SIGUSR1, sigusr1)
+        signal(SIGUSR2, sigusr2)
 
-        elif path.isfile(asset['uri']) or not url_fails(asset['uri']):
-            name, mime, uri = asset['name'], asset['mimetype'], asset['uri']
-            logging.info('Showing asset %s (%s)', name, mime)
-            logging.debug('Asset URI %s', uri)
-            watchdog()
+        settings.load()
+        logging.getLogger().setLevel(logging.DEBUG if settings['debug_logging'] else logging.INFO)        
 
+        try:
+            sh.mkdir(SCREENLY_HTML)
+        except:
+            pass
+        html_templates.black_page(BLACK_PAGE)
 
-            if 'image' in mime:
-                duration = int(asset['duration'])
-                view_image(uri, duration)
-            elif 'webpage' == mime:
-                # FIXME If we want to force periodic reloads of repeated web assets, force=True could be used here.
-                # See e38e6fef3a70906e7f8739294ffd523af6ce66be.
-                view_url(uri, asset)
-            elif 'video' in mime:
-                view_video(uri, asset)
+        load_browser(url='http://{0}:{1}/splash_page'.format(settings.get_listen_ip(), settings.get_listen_port()) if settings['show_splash'] else 'file://' + BLACK_PAGE)
 
-            elif uri.startswith('/'): # local file
-                if 'dir' == mime:
-                    view_directory(uri, asset)
-                else:
-                    pass
-               
-            else:
-                logging.error('Unknown MimeType %s', mime)
-                sleep(0.5)
+    def play(self, entry):
+        self.stop()
+        self.currentId = entry.id
+        self.currentDirectory = entry.directory             
+            
+        self.worker = ViewThread(entry)
+        self.worker.setDaemon(True)
+        self.worker.start()
 
-        else:
-            logging.info('Asset %s at %s is not available, skipping.', asset['name'], asset['uri'])
-            sleep(0.5)
+    def stop(self):
+        if self.worker is not None:
+            self.worker.stop()
 
-
-def setup():
-    global HOME, arch, db_conn
-    HOME = getenv('HOME', '/home/pi')
-    arch = machine()
-
-    signal(SIGUSR1, sigusr1)
-    signal(SIGUSR2, sigusr2)
-
-    load_settings()
-    db_conn = db.conn(settings['database'])
-
-    sh.mkdir(SCREENLY_HTML, p=True)
-    html_templates.black_page(BLACK_PAGE)
-
-
-def main():
-    setup()
-
-    url = 'http://{0}:{1}/splash_page'.format(settings.get_listen_ip(), settings.get_listen_port()) if settings['show_splash'] else 'file://' + BLACK_PAGE
-    load_browser(url=url)
-
-    if settings['show_splash']:
-        sleep(SPLASH_DELAY)
-
-    scheduler = Scheduler()    
-    
-    process_playlist(scheduler)
+    def run(self):
+        while True:
+            schedules = list(Schedule.select(Schedule.q.active==True, orderBy='id'))
+            if len(schedules) > 0: # there is an active schedule                
+                schedule = schedules[0]
+                dt = datetime.time(datetime.now())
+                time = dt.hour * 60 * 60 + dt.minute * 60 + dt.second        
+                
+                for entry in schedule.entries:                     
+                    logging.info('checking activity of: %s, time: %d' % (entry, time))
+                    
+                    if entry.start <= time and entry.end >= time and (self.currentId is None or self.currentId != entry.id or self.currentDirectory != entry.directory):
+                        logging.info('show directory: %s' % entry)
+                        self.play(entry)
+                        break
+                    else:
+                        # if an entry is currently running there is nothing
+                        # to do
+                        pass
+            else: # there is no active schedule
+                self.stop()
+            # sleep 10 seconds then run again
+            sleep(10)   
 
 
 if __name__ == "__main__":
     try:
-        main()
+        viewer = Viewer()
+        viewer.run()
     except:
         logging.exception("Viewer crashed.")
         raise
