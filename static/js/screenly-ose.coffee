@@ -300,6 +300,7 @@ API.View.Timeline = class TimelineView extends DisposableView
     @width = @$el.parent().width()
     @intervalls = []
     that = @
+    $(window).on('resize', @updateIntervallWidths)
 
     tooltip = @$el.find('#timeline-tooltip')
 
@@ -332,6 +333,9 @@ API.View.Timeline = class TimelineView extends DisposableView
       data: that
     
     @render()  
+
+  updateIntervallWidths: (e) =>
+    @render()
 
   showEntryView: (e) =>
     $intervall = $(e.currentTarget)
@@ -433,6 +437,10 @@ API.View.Timeline = class TimelineView extends DisposableView
 
     for entry, index in @collection.models
       @renderIntervall entry, index
+
+  close: =>
+    $(window).off('resize', @updateIntervallWidths)
+    super()
 
 
 API.View.ScheduleView = class ScheduleView extends DisposableView
@@ -542,9 +550,9 @@ API.View.SchedulesView = class SchedulesView extends DisposableView
     @collection.each (model, index) =>  
       $schedule = $("<a class='list-group-item' data-schedule='#{index}' href='#'> 
         <div class='schedule-row-title'>
-          #{model.attributes.name}&nbsp;
-        </div>
-        <div class='pull-right'>" + 
+          #{model.attributes.name}&nbsp;          
+        </div>        
+        <div>" + 
           (if model.attributes.active then "<span class='label label-success'>Enabled</span>" else "<span class='label label-danger'>Disabled</span>") + 
             "</div>
         </a>")

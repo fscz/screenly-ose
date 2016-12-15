@@ -404,11 +404,13 @@
     extend(TimelineView, superClass);
 
     function TimelineView() {
+      this.close = bind(this.close, this);
       this.render = bind(this.render, this);
       this.renderIntervall = bind(this.renderIntervall, this);
       this.insert = bind(this.insert, this);
       this.get_intervall_at = bind(this.get_intervall_at, this);
       this.showEntryView = bind(this.showEntryView, this);
+      this.updateIntervallWidths = bind(this.updateIntervallWidths, this);
       this.initialize = bind(this.initialize, this);
       this.get_time = bind(this.get_time, this);
       this.duration = bind(this.duration, this);
@@ -449,6 +451,7 @@
       this.width = this.$el.parent().width();
       this.intervalls = [];
       that = this;
+      $(window).on('resize', this.updateIntervallWidths);
       tooltip = this.$el.find('#timeline-tooltip');
       this.$el.mousemove(function(e) {
         var hours, minutes, ref, relX, seconds;
@@ -479,6 +482,10 @@
         ],
         data: that
       });
+      return this.render();
+    };
+
+    TimelineView.prototype.updateIntervallWidths = function(e) {
       return this.render();
     };
 
@@ -592,6 +599,11 @@
         results.push(this.renderIntervall(entry, index));
       }
       return results;
+    };
+
+    TimelineView.prototype.close = function() {
+      $(window).off('resize', this.updateIntervallWidths);
+      return TimelineView.__super__.close.call(this);
     };
 
     return TimelineView;
@@ -742,7 +754,7 @@
       return this.collection.each((function(_this) {
         return function(model, index) {
           var $schedule;
-          $schedule = $(("<a class='list-group-item' data-schedule='" + index + "' href='#'> <div class='schedule-row-title'> " + model.attributes.name + "&nbsp; </div> <div class='pull-right'>") + (model.attributes.active ? "<span class='label label-success'>Enabled</span>" : "<span class='label label-danger'>Disabled</span>") + "</div> </a>");
+          $schedule = $(("<a class='list-group-item' data-schedule='" + index + "' href='#'> <div class='schedule-row-title'> " + model.attributes.name + "&nbsp; </div> <div>") + (model.attributes.active ? "<span class='label label-success'>Enabled</span>" : "<span class='label label-danger'>Disabled</span>") + "</div> </a>");
           return _this.$el.append($schedule);
         };
       })(this));

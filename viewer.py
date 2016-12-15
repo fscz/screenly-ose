@@ -37,13 +37,12 @@ LOAD_SCREEN = '/screenly/loading.jpg'  # relative to $HOME
 UZBLRC = '/.config/uzbl/config-screenly'  # relative to $HOME
 INTRO = '/screenly/intro-template.html'
 
+DEFAULT_DURATION = 30
+
 current_browser_url = None
 browser = None
 home = None
 
-
-WEBPAGE_TIMEOUT = 30 # secs
-IMAGE_TIMEOUT = 30 # secs
 
 def sigusr1(signum, frame):
     """
@@ -76,7 +75,7 @@ def load_browser(url):
     browser = sh.Command('uzbl-browser')(print_events=True, config='-', uri=current_browser_url, _bg=True)
     logging.info('Browser loading %s. Running as PID %s.', current_browser_url, browser.pid)
 
-    uzbl_rc = 'set ssl_verify = {}\n'.format('1' if settings['verify_ssl'] else '0')
+    uzbl_rc = 'set ssl_verify = 0'
     with open(home + UZBLRC) as f:  # load uzbl.rc
         uzbl_rc = f.read() + uzbl_rc
     browser_send(uzbl_rc)
@@ -146,6 +145,11 @@ def view_video(uri):
     if run.exit_code == 124:
         logging.error('omxplayer timed out')
 
+def get_setting(key, default, cast=id):
+    try:
+        return cast(settings[key])
+    except:
+        return default
 
 class ViewThread(threading.Thread):
     def __init__(self, entry):
@@ -185,11 +189,11 @@ class ViewThread(threading.Thread):
                     num = (num+1) % num_files
                     if mime is not None:
                         if 'image' in mime:
-                            currentEntryDuration = IMAGE_TIMEOUT
+                            currentEntryDuration = get_setting('image_duration', DEFAULT_DURATION, cast=int)
                             view_image(file, force=isNew)
                             isNew = False
                         elif 'text' in mime: 
-                            currentEntryDuration = WEBPAGE_TIMEOUT
+                            currentEntryDuration = get_setting('webpage_duration', DEFAULT_DURATION, cast=int)
                             with open(file, 'r') as urlfile:
                                 try:
                                     view_url(urlfile.readlines()[0].replace('\n', ''),force=isNew)                                                        
@@ -206,10 +210,11 @@ class ViewThread(threading.Thread):
                             currentEntryDuration = 0
                     else:
                         logging.info('cannot show suspect file: %s' % file)    
-                    
+                 
 
                 sleep(self.loopTime)
                 currentEntryDuration -= self.loopTime     
+            
 
 class Viewer(object):
 
@@ -224,7 +229,7 @@ class Viewer(object):
         signal(SIGUSR2, sigusr2)
 
         settings.load()
-        logging.getLogger().setLevel(logging.DEBUG if settings['debug_logging'] else logging.INFO)        
+        logging.getLogger().setLevel(logging.INFO)
 
         try:
             sh.mkdir(SCREENLY_HTML)
@@ -232,7 +237,8 @@ class Viewer(object):
             pass
         html_templates.black_page(BLACK_PAGE)
 
-        load_browser(url='http://{0}:{1}/splash_page'.format(settings.get_listen_ip(), settings.get_listen_port()) if settings['show_splash'] else 'file://' + BLACK_PAGE)
+        load_browser(url='http://{0}:{1}/splash_page'.format(settings.get_listen_ip(), settings.get_listen_port()))
+        sleep(30)
 
     def play(self, entry):
         self.stop()
@@ -246,6 +252,7 @@ class Viewer(object):
     def stop(self):
         if self.worker is not None:
             self.worker.stop()
+        browser_clear()
 
     def run(self):
         while True:
@@ -267,7 +274,7 @@ class Viewer(object):
                         # to do
                         pass
             else: # there is no active schedule
-                self.stop()
+                self.stop()                
             # sleep 10 seconds then run again
             sleep(10)   
 

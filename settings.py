@@ -13,21 +13,15 @@ DEFAULTS = {
     'main': {
         'database': CONFIG_DIR + 'screenly.db',
         'listen': '0.0.0.0:8080',
-        'assetdir': 'screenly_assets',
-        'use_24_hour_clock': False
+        'assetdir': 'screenly_assets'
     },
     'viewer': {
-        'show_splash': True,
         'audio_output': 'hdmi',
-        'shuffle_playlist': False,
-        'resolution': '1920x1080',
-        'default_duration': '60',
-        'debug_logging': False,
-        'verify_ssl': True,
+        'webpage_duration': '30',
+        'image_duration': '30'
     }
 }
 CONFIGURABLE_SETTINGS = DEFAULTS['viewer']
-CONFIGURABLE_SETTINGS['use_24_hour_clock'] = DEFAULTS['main']['use_24_hour_clock']
 
 # Initiate logging
 logging.basicConfig(level=logging.INFO,
@@ -51,10 +45,14 @@ class ScreenlySettings(IterableUserDict):
         self.conf_file = self.get_configfile()
 
         if not path.isfile(self.conf_file):
-            logging.error('Config-file %s missing', self.conf_file)
-            exit(1)
-        else:
-            self.load()
+            try:
+                with open(self.conf_file, 'w') as file:
+                    pass
+            except:
+                logging.error('Config-file %s missing and failed to create', self.conf_file)
+                exit(1)        
+        self.load()
+        self.save()
 
     def _get(self, config, section, field, default):
         try:

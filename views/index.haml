@@ -29,11 +29,6 @@
 
     %link(href="/static/css/bootstrap.min.css", rel="stylesheet")
     %link(href="/static/css/screenly.css", rel="stylesheet")
-    
-
-    :javascript
-      var default_duration = ${default_duration};
-      var use_24_hour_clock = ${'true' if use_24_hour_clock else 'false'};
 
     %script(src="/static/js/underscore-1.4.3.min.js")
 
@@ -73,7 +68,9 @@
                 System Info
     .container          
       .row
-        .col-md-9#schedule
+        .col-md-9
+          #schedule
+          #entry
           
         .col-md-3
           .panel.panel-success
@@ -85,13 +82,10 @@
                   %span.glyphicon.glyphicon-plus.white
             #schedules.list-group
 
-      .row
-        .col-md-9#entry
-
     #footer
-      .container
-        .copy
-          &copy; <strong>2012-2016.</strong> WireLoad, Inc.
-        %a(id="wireload-logo", href="http://wireload.net/", target="_blank")
-          %img(src="/static/img/wireload-logo.png", alt="WireLoad")
+      %div
+        &copy; <strong>1998 - 2016.</strong> star/trac supply chain solutions
+      %a(href="http://www.star-trac.de/", target="_blank")
+        %img(src="/static/img/st_logo.png", height="30", alt="star/trac")
     %script(src="/static/js/main.js")
+    

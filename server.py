@@ -88,11 +88,6 @@ def template(template_name, **context):
     """Screenly template response generator. Shares the
     same function signature as Bottle's template() method
     but also injects some global context."""
-
-    # Add global contexts
-    context['up_to_date'] = is_up_to_date()
-    context['default_duration'] = settings['default_duration']
-    context['use_24_hour_clock'] = settings['use_24_hour_clock']
     context['template_settings'] = {
         'imports': ['from lib.utils import template_handle_unicode'],
         'default_filters': ['template_handle_unicode'],
@@ -207,86 +202,6 @@ def mistake404(code):
 ################################
 def load_model(request):
     return json.loads(Request(request.environ).form['model'].strip().decode('utf-8'))        
-
-def prepare_asset(request):
-
-    req = Request(request.environ)
-    data = None
-
-    data = json.loads(req.form['model']) if 'model' in req.form else req.form
-
-    def get(key):
-        val = data.get(key, '')
-        if isinstance(val, unicode):
-            return val.strip()
-        elif isinstance(val, basestring):
-            return val.strip().decode('utf-8')
-        else:
-            return val
-
-    if all([get('name'),
-            get('uri') or req.files.get('file_upload'),
-            get('mimetype')]):
-
-        asset = {
-            'name': get('name'),
-            'mimetype': get('mimetype'),
-            'asset_id': get('asset_id'),
-            'is_enabled': get('is_enabled'),
-            'nocache': get('nocache'),
-        }        
-
-        uri = get('uri') or False  
-
-        if not asset['asset_id']:
-            asset['asset_id'] = uuid.uuid4().hex
-
-        try:
-            file_upload = req.files.get('file_upload')
-            filename = file_upload.filename
-        except AttributeError:
-            file_upload = None
-            filename = None
-
-        if filename and 'web' in asset['mimetype']:
-            raise Exception("Invalid combination. Can't upload a web resource.")
-
-        if uri and filename:
-            raise Exception("Invalid combination. Can't select both URI and a file.")
-
-        if uri and not uri.startswith('/'):
-            if not validate_url(uri):
-                raise Exception("Invalid URL. Failed to add asset.")
-            else:
-                asset['uri'] = uri
-        else:
-            asset['uri'] = uri
-
-        if filename:
-            asset['uri'] = path.join(settings['assetdir'], asset['asset_id'])
-
-            file_upload.save(asset['uri'])
-
-        if "video" in asset['mimetype']:
-            video_duration = get_video_duration(asset['uri'])
-            if video_duration:
-                asset['duration'] = int(video_duration.total_seconds())
-            else:
-                asset['duration'] = 'N/A'
-        else:
-            # Crashes if it's not an int. We want that.
-            asset['duration'] = int(get('duration'))
-
-        if not asset['asset_id']:
-            raise Exception
-
-        if not asset['uri']:
-            raise Exception
-
-        return asset
-    else:
-        raise Exception("Not enough information provided. Please specify 'name', 'uri', and 'mimetype'.")
-
 
 def get_file_info(file, path):
     full_path = os.path.join(path, file)
@@ -466,7 +381,7 @@ def delete_entry(schedule_id, entry_id):
         entry = Entry.get(entry_id)
         if entry.schedule.id == schedule.id:
             entry.destroySelf()
-            return entry
+            return {}
         else:
             raise Exception("Entry "+entry_id+" does not belong to schedule "+schedule_id)
     except Exception as e:

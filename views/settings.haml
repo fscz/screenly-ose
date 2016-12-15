@@ -5,25 +5,25 @@
     %meta(charset="utf-8")
     %title Screenly OSE
 
-    %link(href="/static/css/bootstrap.css", rel="stylesheet")
+    %link(href="/static/css/bootstrap.min.css", rel="stylesheet")
     %link(href="/static/css/screenly.css", rel="stylesheet")
-    %link(href="/static/css/toggle-switch.css", rel="stylesheet")
-    %script(src="/static/js/jquery-1.9.1.min.js")
+    %script(src="/static/js/jquery-3.1.1.min.js")
 
   %body
-
-    .navbar.navbar-fixed-top
-      .navbar-inner
-        .container
-          %a.brand(href="/")
-            %img(src='static/img/screenly_ose_logo.png')
-
-          %ul.nav.pull-right
-            - if not up_to_date:
-              %li.update-available
-                %a(href="http://www.screenlyapp.com/ose.html#upgrade")
-                  %i.icon-circle-arrow-down.icon-white
-                  Update Available
+    %nav.navbar.navbar-inverse.navbar-fixed-top
+      .container
+        .navbar-header
+          %button.navbar-toggle.collapsed(type="button", dataToggle="collapse", dataTarget="#navbar", ariaExpanded="false", ariaControls="navbar")
+            %span.sr-only
+              Toggle navigation
+            %span.icon-bar
+            %span.icon-bar
+            %span.icon-bar
+          %a.navbar-brand(href="/")
+            %img(src='static/img/screenly_ose_logo.png', height="30px")
+        #navbar.navbar-collapse.collapse
+          %ul.nav.navbar-nav
+          %ul.nav.navbar-nav.navbar-right
             %li
               %a(href="/settings")
                 %i.icon-cog.icon-white
@@ -33,8 +33,7 @@
               %a(href="/system_info")
                 %i.icon-tasks.icon-white
                 System Info
-
-    .container
+    .container          
       .row
         .span12
           %h1.page-header
@@ -47,34 +46,6 @@
             </div>
 
           %form.form-horizontal(method="post")
-            .control-group
-              %label.control-label Show splash screen
-              .controls
-                %label.checkbox.toggle.well#splash_checkbox
-                  - if show_splash:
-                    %input(type="checkbox", checked="checked", name="show_splash")
-                  - else:
-                    %input(type="checkbox", name="show_splash")
-                  %p
-                    %span.on On
-                    %span.off Off
-                  %a.btn.btn-primary.slide-button
-
-            .control-group
-              %label.control-label Shuffle playlist
-              .controls
-
-                %label.checkbox.toggle.well#shuffle_checkbox
-                  - if shuffle_playlist:
-                    %input(type="checkbox", checked="checked", name="shuffle_playlist")
-                  - else:
-                    %input(type="checkbox", name="shuffle_playlist")
-                  %p
-                    %span.on On
-                    %span.off Off
-                  %a.btn.btn-primary.slide-button
-
-            .control-group
               %label.control-label Audio output
               .controls
                 %select.span2(name="audio_output")
@@ -86,45 +57,21 @@
                     %option(value="local", selected="selected") 3.5mm jack
 
             .control-group
-              %label.control-label Default duration
+              %label.control-label Webpage duration
               .controls
-                %input.span1(type="number", name="default_duration", value=default_duration)
+                %input.span1(type="number", name="webpage_duration", value=webpage_duration)
 
             .control-group
-              %label.control-label Use 24-hour clock
+              %label.control-label Image duration
               .controls
-
-                %label.checkbox.toggle.well#use_24_hour_clock_checkbox
-                  - if use_24_hour_clock:
-                    %input(type="checkbox", checked="checked", name="use_24_hour_clock")
-                  - else:
-                    %input(type="checkbox", name="use_24_hour_clock")
-                  %p
-                    %span.on On
-                    %span.off Off
-                  %a.btn.btn-primary.slide-button
-
-            .control-group
-              %label.control-label Debug logging
-              .controls
-
-                %label.checkbox.toggle.well#debug_checkbox
-                  - if debug_logging:
-                    %input(type="checkbox", checked="checked", name="debug_logging")
-                  - else:
-                    %input(type="checkbox", name="debug_logging")
-                  %p
-                    %span.on On
-                    %span.off Off
-                  %a.btn.btn-primary.slide-button
+                %input.span1(type="number", name="image_duration", value=image_duration)          
 
             .form-actions
               %input.btn.btn-primary(type="submit", value="Save Settings")
               %a.btn(href="/") Cancel
 
     #footer
-      .container
-        .copy
-          &copy; <strong>2012-2016.</strong> WireLoad, Inc.
-        %a(id="wireload-logo", href="http://wireload.net/", target="_blank")
-          %img(src="/static/img/wireload-logo.png", alt="WireLoad")
+      %div
+        &copy; <strong>1998 - 2016.</strong> star/trac supply chain solutions
+      %a(href="http://www.star-trac.de/", target="_blank")
+        %img(src="/static/img/st_logo.png", height="30", alt="star/trac")
