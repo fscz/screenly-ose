@@ -634,15 +634,13 @@
     ScheduleView.prototype.initialize = function(attrs, options) {
       var $button, event, i, len, ref, that;
       that = this;
-      this.template = $("<div class='panel panel-success'> <div class='panel-heading clearfix'> <div class='panel-title pull-left'> Schedule </div> <div class='pull-right'> <button id='enableSchedule' type='button' class='btn btn-danger' title='Enable' style='display: inline-block'>Disabled</button> <button id='deleteSchedule' type='button' class='btn btn-danger' style='display: inline-block'>Remove</button> </div> </div> <div class='input-group'> <span class='input-group-addon'> Name </span> <input class='form-control' type='text' placeholder='name' value='" + this.model.attributes.name + "'/> </div> <div id='timeline'> <i id='timeline-tooltip' data-toggle='tooltip' data-placement='top' data-animation='false' data-trigger='manual'/> </div> </div>");
+      this.template = $("<div class='panel panel-success'> <div class='panel-heading clearfix'> <div class='panel-title pull-left'> Schedule </div> <div class='pull-right'> <button id='enableSchedule' type='button' class='btn btn-success' style='display: inline-block'>Enable</button> <button id='deleteSchedule' type='button' class='btn btn-danger' style='display: inline-block'>Remove</button> </div> </div> <div class='input-group'> <span class='input-group-addon'> Name </span> <input class='form-control' type='text' placeholder='name' value='" + this.model.attributes.name + "'/> </div> <div id='timeline'> <i id='timeline-tooltip' data-toggle='tooltip' data-placement='top' data-animation='false' data-trigger='manual'/> </div> </div>");
       this.$el.html(this.template);
       if (this.model.attributes.active) {
         $button = this.template.find('#enableSchedule');
-        $button.removeClass('btn-danger');
-        $button.prop('disabled', true);
-        $button.addClass('btn-success');
-        $button.text('Enabled');
-        $button.attr('title', 'Enabled');
+        $button.removeClass('btn-success');
+        $button.addClass('btn-danger');
+        $button.text('Disable');
       }
       ref = 'add remove'.split(' ');
       for (i = 0, len = ref.length; i < len; i++) {
@@ -674,26 +672,28 @@
     };
 
     ScheduleView.prototype.enableSchedule = function(e) {
-      var $button, i, len, ref, results, schedule;
+      var $button, i, len, ref, schedule;
       $button = $(e.currentTarget);
-      $button.removeClass('btn-danger');
-      $button.prop('disabled', true);
-      $button.addClass('btn-success');
-      $button.text('Enabled');
-      this.model.attributes.active = true;
-      this.model.save();
-      ref = this.model.collection.models;
-      results = [];
-      for (i = 0, len = ref.length; i < len; i++) {
-        schedule = ref[i];
-        if (schedule.attributes.active && schedule.attributes.id !== this.model.attributes.id) {
-          schedule.attributes.active = false;
-          results.push(schedule.save());
-        } else {
-          results.push(void 0);
+      if (this.model.attributes.active) {
+        this.model.attributes.active = false;
+        $button.removeClass('btn-danger');
+        $button.addClass('btn-success');
+        $button.text('Enable');
+      } else {
+        this.model.attributes.active = true;
+        $button.removeClass('btn-success');
+        $button.addClass('btn-danger');
+        $button.text('Disable');
+        ref = this.model.collection.models;
+        for (i = 0, len = ref.length; i < len; i++) {
+          schedule = ref[i];
+          if (schedule.attributes.active && schedule.attributes.id !== this.model.attributes.id) {
+            schedule.attributes.active = false;
+            schedule.save();
+          }
         }
       }
-      return results;
+      return this.model.save();
     };
 
     ScheduleView.prototype.changeName = function(e) {

@@ -458,7 +458,7 @@ API.View.ScheduleView = class ScheduleView extends DisposableView
               Schedule
             </div>
             <div class='pull-right'>
-                <button id='enableSchedule' type='button' class='btn btn-danger' title='Enable' style='display: inline-block'>Disabled</button>                
+                <button id='enableSchedule' type='button' class='btn btn-success' style='display: inline-block'>Enable</button>                
                 <button id='deleteSchedule' type='button' class='btn btn-danger' style='display: inline-block'>Remove</button>              
             </div>
           </div>
@@ -477,11 +477,9 @@ API.View.ScheduleView = class ScheduleView extends DisposableView
     @$el.html @template    
     if @model.attributes.active
       $button = @template.find('#enableSchedule')
-      $button.removeClass 'btn-danger'
-      $button.prop 'disabled', true  
-      $button.addClass 'btn-success'      
-      $button.text 'Enabled'
-      $button.attr 'title', 'Enabled'
+      $button.removeClass 'btn-success'      
+      $button.addClass 'btn-danger'      
+      $button.text 'Disable'
 
     @model.attributes.entries.bind event, @reload for event in ('add remove'.split ' ')     
 
@@ -501,20 +499,29 @@ API.View.ScheduleView = class ScheduleView extends DisposableView
 
     API.controller.unshowSchedule()
 
-  enableSchedule: (e) =>      
+  enableSchedule: (e) => 
     $button = $(e.currentTarget)
-    $button.removeClass 'btn-danger'
-    $button.prop 'disabled', true  
-    $button.addClass 'btn-success'      
-    $button.text 'Enabled'
+    if @model.attributes.active
+      @model.attributes.active = false
+      $button.removeClass 'btn-danger'
+      $button.addClass 'btn-success'
+      $button.text 'Enable'
+    else
+      @model.attributes.active = true
+      $button.removeClass 'btn-success'
+      $button.addClass 'btn-danger'
+      $button.text 'Disable'
 
-    @model.attributes.active = true
+      # on enable disable other enabled
+      for schedule in @model.collection.models
+        if schedule.attributes.active and schedule.attributes.id != @model.attributes.id
+          schedule.attributes.active = false
+          schedule.save() 
+
     @model.save()
-      
-    for schedule in @model.collection.models
-      if schedule.attributes.active and schedule.attributes.id != @model.attributes.id
-        schedule.attributes.active = false
-        schedule.save() 
+    
+
+    
 
   changeName: (e) =>
     @model.attributes.name = $(e.target).val()

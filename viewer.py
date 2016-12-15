@@ -151,9 +151,16 @@ def get_setting(key, default, cast=id):
     except:
         return default
 
-class ViewThread(threading.Thread):
+class VideoThread(threading.Thread):
+    def __init__(self, file):
+        super(VideoThread, self).__init__()
+        self.file = file
+    def run(self):
+        view_video(self.file)  
+
+class DirectoryThread(threading.Thread):
     def __init__(self, entry):
-        super(ViewThread, self).__init__()
+        super(DirectoryThread, self).__init__()
         self.entry = entry
         self.loopTime = 1
         self.__stop = threading.Event()
@@ -202,7 +209,7 @@ class ViewThread(threading.Thread):
                             isNew = False
                         elif 'video' in mime:
                             currentEntryDuration = get_video_duration(file)
-                            view_video(file)                            
+                            VideoThread(file).start()
                         else:
                             # cannot show this entry, so skip
                             logging.info('mimetype (%s) of file (%s) not supported.' % (mime, file))
@@ -245,7 +252,7 @@ class Viewer(object):
         self.currentId = entry.id
         self.currentDirectory = entry.directory             
             
-        self.worker = ViewThread(entry)
+        self.worker = DirectoryThread(entry)
         self.worker.setDaemon(True)
         self.worker.start()
 
@@ -253,6 +260,10 @@ class Viewer(object):
         if self.worker is not None:
             self.worker.stop()
         browser_clear()
+        sh.killall('omxplayer.bin', _ok_code=[1])
+        self.currentId = None
+        self.currentDirectory = None
+        self.worker = None
 
     def run(self):
         while True:
