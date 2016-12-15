@@ -410,8 +410,9 @@ API.View.Timeline = class TimelineView extends DisposableView
     @$el.mousemove (e) ->
       if that.isDragging
         delta = e.pageX - that.startX
-        that.dragIntervall.width(that.startWidth + delta)
-        that.next.width(that.nextStartWidth - delta)        
+        if that.startWidth + delta > 2 and delta < that.nextStartWidth - 2
+          that.dragIntervall.width(that.startWidth + delta)
+          that.next.width(that.nextStartWidth - delta)        
     
     @$el.mouseup (e) ->
       if that.isDragging

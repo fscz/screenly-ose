@@ -567,8 +567,10 @@
         var delta;
         if (that.isDragging) {
           delta = e.pageX - that.startX;
-          that.dragIntervall.width(that.startWidth + delta);
-          return that.next.width(that.nextStartWidth - delta);
+          if (that.startWidth + delta > 2 && delta < that.nextStartWidth - 2) {
+            that.dragIntervall.width(that.startWidth + delta);
+            return that.next.width(that.nextStartWidth - delta);
+          }
         }
       });
       this.$el.mouseup(function(e) {
