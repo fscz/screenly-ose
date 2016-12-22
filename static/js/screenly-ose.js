@@ -214,19 +214,154 @@
     function TimeView() {
       this.render = bind(this.render, this);
       this.get_time = bind(this.get_time, this);
+      this.down = bind(this.down, this);
+      this.up = bind(this.up, this);
+      this.changeTime = bind(this.changeTime, this);
       this.initialize = bind(this.initialize, this);
       return TimeView.__super__.constructor.apply(this, arguments);
     }
+
+    TimeView.prototype.events = {
+      'click .spinner .btn:first-of-type': 'up',
+      'click .spinner .btn:last-of-type': 'down',
+      'change #hours': 'changeTime',
+      'change #minutes': 'changeTime',
+      'change #seconds': 'changeTime'
+    };
 
     TimeView.prototype.initialize = function(attrs, options) {
       var that;
       that = this;
       this.type = options.type;
-      this.template = $("<span class='input-group-addon'> " + options.name + " </span> <div class='form-control'> </div>");
+      this.index = options.index;
+      this.template = $("<span class='input-group-addon'> " + options.name + " </span> <div class='form-inline'> <div class='input-group spinner'> <input id='hours' type='text' class='form-control' value='0' min='0' max='23'> <div class='input-group-btn-vertical'> <button class='btn btn-default' type='button'><i class='fa fa-caret-up'></i></button> <button class='btn btn-default' type='button'><i class='fa fa-caret-down'></i></button> </div> </div> <div class='input-group'> : </div> <div class='input-group spinner'> <input id='minutes' type='text' class='form-control' value='0' min='0' max='59'> <div class='input-group-btn-vertical'> <button class='btn btn-default' type='button'><i class='fa fa-caret-up'></i></button> <button class='btn btn-default' type='button'><i class='fa fa-caret-down'></i></button> </div> </div> <div class='input-group'> : </div> <div class='input-group spinner'> <input id='seconds' type='text' class='form-control' value='0' min='0' max='59'> <div class='input-group-btn-vertical'> <button class='btn btn-default' type='button'><i class='fa fa-caret-up'></i></button> <button class='btn btn-default' type='button'><i class='fa fa-caret-down'></i></button> </div> </div> </div>");
+      this.hours = this.template.find('#hours');
+      this.minutes = this.template.find('#minutes');
+      this.seconds = this.template.find('#seconds');
       this.$el.html(this.template);
       this.field = this.$el.find('.form-control');
       this.model.bind('change', this.render);
       return this.render();
+    };
+
+    TimeView.prototype.changeTime = function(e) {
+      var error, h, input, last, m, max, min, newTime, next, ref, s, val;
+      input = $(e.currentTarget);
+      max = input.attr('max');
+      min = input.attr('min');
+      try {
+        val = parseInt(input.val());
+        if (val <= max && val >= min) {
+          ref = [parseInt(this.hours.val()), parseInt(this.minutes.val()), parseInt(this.seconds.val())], h = ref[0], m = ref[1], s = ref[2];
+          newTime = h * 3600 + m * 60 + s;
+          if (this.type === 'start') {
+            if (this.index - 1 >= 0) {
+              last = this.model.collection.models[this.index - 1];
+            }
+            if (last && this.model.attributes.end > newTime) {
+              last.set('end', newTime);
+              last.save();
+              this.model.set('start', newTime);
+              return this.model.save();
+            }
+          } else {
+            if (this.index + 1 < this.model.collection.models.length) {
+              next = this.model.collection.models[this.index + 1];
+            }
+            if (next && next.attributes.end > newTime) {
+              next.set('start', newTime);
+              next.save();
+              this.model.set('end', newTime);
+              return this.model.save();
+            }
+          }
+        } else {
+          throw 'value not allowed';
+        }
+      } catch (error1) {
+        error = error1;
+        return this.render();
+      }
+    };
+
+    TimeView.prototype.up = function(e) {
+      var btn, h, input, last, m, max, newTime, next, ref, s, val;
+      btn = $(e.currentTarget);
+      input = btn.closest('.spinner').find('input');
+      max = input.attr('max');
+      val = parseInt(input.val());
+      ref = [parseInt(this.hours.val()), parseInt(this.minutes.val()), parseInt(this.seconds.val())], h = ref[0], m = ref[1], s = ref[2];
+      newTime = null;
+      if (val < max) {
+        if (input.attr('id') === 'hours') {
+          newTime = (h + 1) * 3600 + m * 60 + s;
+        } else if (input.attr('id') === 'minutes') {
+          newTime = h * 3600 + (m + 1) * 60 + s;
+        } else {
+          newTime = h * 3600 + m * 60 + s + 1;
+        }
+        if (this.type === 'start') {
+          if (this.index - 1 >= 0) {
+            last = this.model.collection.models[this.index - 1];
+          }
+          if (last && this.model.attributes.end > newTime) {
+            last.set('end', newTime);
+            last.save();
+            this.model.set('start', newTime);
+            return this.model.save();
+          }
+        } else {
+          if (this.index + 1 < this.model.collection.models.length) {
+            next = this.model.collection.models[this.index + 1];
+          }
+          if (next && next.attributes.end > newTime) {
+            next.set('start', newTime);
+            next.save();
+            this.model.set('end', newTime);
+            return this.model.save();
+          }
+        }
+      }
+    };
+
+    TimeView.prototype.down = function(e) {
+      var btn, h, input, last, m, min, newTime, next, ref, s, val;
+      btn = $(e.currentTarget);
+      input = btn.closest('.spinner').find('input');
+      min = input.attr('min');
+      val = parseInt(input.val());
+      ref = [parseInt(this.hours.val()), parseInt(this.minutes.val()), parseInt(this.seconds.val())], h = ref[0], m = ref[1], s = ref[2];
+      newTime = null;
+      if (val > min) {
+        if (input.attr('id') === 'hours') {
+          newTime = (h - 1) * 3600 + m * 60 + s;
+        } else if (input.attr('id') === 'minutes') {
+          newTime = h * 3600 + (m - 1) * 60 + s;
+        } else {
+          newTime = h * 3600 + m * 60 + s - 1;
+        }
+        if (this.type === 'start') {
+          if (this.index - 1 >= 0) {
+            last = this.model.collection.models[this.index - 1];
+          }
+          if (last && this.model.attributes.end > newTime) {
+            last.set('end', newTime);
+            last.save();
+            this.model.set('start', newTime);
+            return this.model.save();
+          }
+        } else {
+          if (this.index + 1 < this.model.collection.models.length) {
+            next = this.model.collection.models[this.index + 1];
+          }
+          if (next && next.attributes.end > newTime) {
+            next.set('start', newTime);
+            next.save();
+            this.model.set('end', newTime);
+            return this.model.save();
+          }
+        }
+      }
     };
 
     TimeView.prototype.get_time = function(time) {
@@ -240,7 +375,9 @@
     TimeView.prototype.render = function() {
       var hours, minutes, ref, seconds;
       ref = this.get_time(this.model.attributes[this.type]), hours = ref[0], minutes = ref[1], seconds = ref[2];
-      return this.field.text(hours + ':' + minutes + ':' + seconds);
+      this.hours.val(hours);
+      this.minutes.val(minutes);
+      return this.seconds.val(seconds);
     };
 
     return TimeView;
@@ -355,14 +492,16 @@
         model: this.model
       }, {
         name: 'Start',
-        type: 'start'
+        type: 'start',
+        index: this.index
       });
       this.end = new TimeView({
         el: this.template.find('#end-container'),
         model: this.model
       }, {
         name: 'End',
-        type: 'end'
+        type: 'end',
+        index: this.index
       });
       this.$el.html(this.template);
       return false;
@@ -438,7 +577,7 @@
     TimelineView.prototype.get_time = function(e) {
       var hours, minutes, relX, seconds, time;
       relX = e.pageX - this.$el.offset().left;
-      time = (relX / this.$el.width()) * 24 * 60 * 60;
+      time = (relX / this.$el.width()) * this.max_seconds;
       hours = Math.floor(time / 3600);
       minutes = Math.floor((time - hours * 3600) / 60);
       seconds = (time - hours * 3600 - minutes * 60).toFixed(0);
@@ -447,7 +586,7 @@
 
     TimelineView.prototype.initialize = function(attrs, options) {
       var that, tooltip;
-      this.max_seconds = 24 * 60 * 60;
+      this.max_seconds = (24 * 60 * 60) - 1;
       this.width = this.$el.parent().width();
       this.intervalls = [];
       that = this;
@@ -475,13 +614,14 @@
             callback: function(e) {
               var relX, time;
               relX = e.data.pageX - that.$el.offset().left;
-              time = (relX / that.$el.width()) * 24 * 60 * 60;
+              time = (relX / that.$el.width()) * that.max_seconds;
               return that.insert(time);
             }
           }
         ],
         data: that
       });
+      this.collection.bind('change', this.render);
       return this.render();
     };
 
@@ -808,7 +948,7 @@
           model.attributes.entries.schedule_id = model.attributes.id;
           return model.attributes.entries.create({
             start: 0,
-            end: 24 * 3600,
+            end: (24 * 3600) - 1,
             directory: '/'
           });
         }

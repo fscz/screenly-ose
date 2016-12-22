@@ -97,14 +97,52 @@ class DisposableView extends Backbone.View
     @undelegateEvents()
 
 API.View.TimeView = class TimeView extends DisposableView
+  events: 
+    'click .spinner .btn:first-of-type': 'up'
+    'click .spinner .btn:last-of-type': 'down'
+    'change #hours': 'changeTime'
+    'change #minutes': 'changeTime'
+    'change #seconds': 'changeTime'
+
   initialize: (attrs, options) =>
     that = @
     @type = options.type
+    @index = options.index
     @template = $ "<span class='input-group-addon'>
                     #{options.name}
                   </span>
-                  <div class='form-control'>
+                  <div class='form-inline'>
+                    <div class='input-group spinner'>
+                      <input id='hours' type='text' class='form-control' value='0' min='0' max='23'>
+                      <div class='input-group-btn-vertical'>
+                        <button class='btn btn-default' type='button'><i class='fa fa-caret-up'></i></button>
+                        <button class='btn btn-default' type='button'><i class='fa fa-caret-down'></i></button>
+                      </div>
+                    </div>
+                    <div class='input-group'>
+                      :
+                    </div>
+                    <div class='input-group spinner'>
+                      <input id='minutes' type='text' class='form-control' value='0' min='0' max='59'>
+                      <div class='input-group-btn-vertical'>
+                        <button class='btn btn-default' type='button'><i class='fa fa-caret-up'></i></button>
+                        <button class='btn btn-default' type='button'><i class='fa fa-caret-down'></i></button>
+                      </div>
+                    </div>
+                    <div class='input-group'>
+                      :
+                    </div>
+                    <div class='input-group spinner'>
+                      <input id='seconds' type='text' class='form-control' value='0' min='0' max='59'>
+                      <div class='input-group-btn-vertical'>
+                        <button class='btn btn-default' type='button'><i class='fa fa-caret-up'></i></button>
+                        <button class='btn btn-default' type='button'><i class='fa fa-caret-down'></i></button>
+                      </div>
+                    </div>
                   </div>"
+    @hours = @template.find('#hours')
+    @minutes = @template.find('#minutes')
+    @seconds = @template.find('#seconds')    
 
     @$el.html @template
 
@@ -114,6 +152,115 @@ API.View.TimeView = class TimeView extends DisposableView
 
     @render()
 
+  changeTime: (e) =>
+    input = $(e.currentTarget)
+    max = input.attr('max')      
+    min = input.attr('min')      
+    try
+      val = parseInt(input.val())      
+      if val <= max and val >= min
+        [h,m,s] = [parseInt(@hours.val()), parseInt(@minutes.val()), parseInt(@seconds.val())]
+        
+        newTime = h * 3600 + m * 60 + s
+
+        if @type == 'start'
+          last = @model.collection.models[@index - 1] if @index - 1 >= 0
+
+          if last and @model.attributes.end > newTime
+            last.set('end', newTime)
+            last.save()
+            @model.set('start', newTime)
+            @model.save()          
+
+        else # @type == 'end'
+          next = @model.collection.models[@index + 1] if @index + 1 < @model.collection.models.length
+
+          if next and next.attributes.end > newTime      
+            next.set('start', newTime)
+            next.save()
+            @model.set('end', newTime)
+            @model.save() 
+
+      else 
+        throw 'value not allowed' 
+
+    catch error
+      @render()
+
+  up: (e) =>    
+    btn = $(e.currentTarget)        
+    input = btn.closest('.spinner').find('input')    
+    max = input.attr('max')      
+    val = parseInt(input.val())
+    [h,m,s] = [parseInt(@hours.val()), parseInt(@minutes.val()), parseInt(@seconds.val())]
+
+    newTime = null  
+
+    if val < max 
+      if input.attr('id') == 'hours'
+        newTime = (h + 1) * 3600 + m * 60 + s
+      else if input.attr('id') == 'minutes'
+        newTime = h * 3600 + (m + 1) * 60 + s
+      else # seconds
+        newTime = h * 3600 + m * 60 + s + 1
+
+
+      if @type == 'start'
+        last = @model.collection.models[@index - 1] if @index - 1 >= 0
+
+        if last and @model.attributes.end > newTime
+          last.set('end', newTime)
+          last.save()
+          @model.set('start', newTime)
+          @model.save()          
+
+      else # @type == 'end'
+        next = @model.collection.models[@index + 1] if @index + 1 < @model.collection.models.length
+
+        if next and next.attributes.end > newTime      
+          next.set('start', newTime)
+          next.save()
+          @model.set('end', newTime)
+          @model.save()        
+
+
+
+  down: (e) =>    
+    btn = $(e.currentTarget)        
+    input = btn.closest('.spinner').find('input')    
+    min = input.attr('min')      
+    val = parseInt(input.val())
+    [h,m,s] = [parseInt(@hours.val()), parseInt(@minutes.val()), parseInt(@seconds.val())]
+
+    newTime = null  
+
+    if val > min
+      if input.attr('id') == 'hours'
+        newTime = (h - 1) * 3600 + m * 60 + s
+      else if input.attr('id') == 'minutes'
+        newTime = h * 3600 + (m - 1) * 60 + s
+      else # seconds
+        newTime = h * 3600 + m * 60 + s - 1
+
+
+      if @type == 'start'
+        last = @model.collection.models[@index - 1] if @index - 1 >= 0
+
+        if last and @model.attributes.end > newTime
+          last.set('end', newTime)
+          last.save()
+          @model.set('start', newTime)
+          @model.save()  
+
+      else # @type == 'end'
+        next = @model.collection.models[@index + 1] if @index + 1 < @model.collection.models.length
+
+        if next and next.attributes.end > newTime      
+          next.set('start', newTime)
+          next.save()
+          @model.set('end', newTime)
+          @model.save() 
+
   get_time: (time) =>
     hours = time // 3600
     minutes = (time - hours * 3600) // 60
@@ -122,7 +269,9 @@ API.View.TimeView = class TimeView extends DisposableView
 
   render: =>
     [hours, minutes, seconds] = @get_time(@model.attributes[@type])
-    @field.text(hours+':'+minutes+':'+seconds)
+    @hours.val hours
+    @minutes.val minutes
+    @seconds.val seconds
 
 
 API.View.DirectoryView = class DirectoryView extends DisposableView
@@ -233,6 +382,7 @@ API.View.EntryView = class EntryView extends DisposableView
       {
         name: 'Start'
         type: 'start'
+        index: @index
       }
 
 
@@ -243,6 +393,7 @@ API.View.EntryView = class EntryView extends DisposableView
       {
         name: 'End'
         type: 'end'
+        index: @index
       }
 
     @$el.html @template
@@ -288,7 +439,7 @@ API.View.Timeline = class TimelineView extends DisposableView
 
   get_time: (e) =>
     relX = e.pageX - @$el.offset().left
-    time = (relX / @$el.width()) * 24 * 60 * 60      
+    time = (relX / @$el.width()) * @max_seconds      
     hours = time // 3600
     minutes = (time - hours * 3600) // 60
     seconds = (time - hours * 3600 - minutes * 60).toFixed 0
@@ -296,7 +447,7 @@ API.View.Timeline = class TimelineView extends DisposableView
 
 
   initialize: (attrs, options) =>
-    @max_seconds = 24*60*60
+    @max_seconds = (24*60*60) - 1
     @width = @$el.parent().width()
     @intervalls = []
     that = @
@@ -325,12 +476,13 @@ API.View.Timeline = class TimelineView extends DisposableView
           name: 'Insert keyframe'
           callback: (e) -> 
             relX = e.data.pageX - that.$el.offset().left
-            time = (relX / that.$el.width()) * 24 * 60 * 60
-            
+            time = (relX / that.$el.width()) * that.max_seconds
             that.insert(time)            
         }
       ],
       data: that
+
+    @collection.bind('change', @render)
     
     @render()  
 
@@ -519,9 +671,6 @@ API.View.ScheduleView = class ScheduleView extends DisposableView
           schedule.save() 
 
     @model.save()
-    
-
-    
 
   changeName: (e) =>
     @model.attributes.name = $(e.target).val()
@@ -594,7 +743,7 @@ API.App = class App extends DisposableView
           model.attributes.entries.schedule_id = model.attributes.id
           model.attributes.entries.create {
             start:0, 
-            end: 24*3600
+            end: (24*3600) - 1
             directory: '/'
           }
       }

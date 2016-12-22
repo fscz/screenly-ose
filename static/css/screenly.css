@@ -1,3 +1,5 @@
+@import url(/static/css/font-awesome.min.css);
+
 body {
   margin-top: 70px;
   margin-bottom: 60px;
@@ -18,6 +20,48 @@ body {
 }
 .splash .wireload-link a img {
   width: 150px; 
+}
+
+.spinner input {
+  text-align: right;
+}
+
+#hours, #minutes, #seconds {
+  width: 50px;
+}
+
+.input-group-btn-vertical {
+  position: relative;
+  white-space: nowrap;
+  width: 2%;
+  vertical-align: middle;
+  display: table-cell;
+}
+
+.input-group-btn-vertical > .btn {
+  display: block;
+  float: none;
+  width: 100%;
+  max-width: 100%;
+  padding: 8px;
+  margin-left: -1px;
+  position: relative;
+  border-radius: 0;
+}
+
+.input-group-btn-vertical > .btn:first-child {
+  border-top-right-radius: 4px;
+}
+
+.input-group-btn-vertical > .btn:last-child {
+  margin-top: -2px;
+  border-bottom-right-radius: 4px;
+}
+
+.input-group-btn-vertical i {
+  position: absolute;
+  top: 0;
+  left: 4px;
 }
 
 
