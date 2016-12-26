@@ -9,6 +9,14 @@
     - .config
     - .config/uzbl
 
+- name: Create omxplayer loop script on target pi
+  copy:
+    owner: pi
+    group: pi
+    src: omxplayer-loop
+    dest: /usr/local/bin/omxplayer-loop
+    mode: 774
+
 - name: Copy Screenly default config
   copy:
     owner: pi
