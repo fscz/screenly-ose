@@ -50,7 +50,8 @@ def sigusr1(signum, frame):
     omxplayer is killed to skip any currently playing video assets.
     """
     logging.info('USR1 received, skipping.')
-    sh.killall('omxplayer.bin', _ok_code=[1])
+    browser_clear()
+    kill_player()
 
 
 def sigusr2(signum, frame):
@@ -99,6 +100,10 @@ def browser_clear():
     """Load a black page. Default cb waits for the page to load."""
     browser_send('uri ' + 'file://' + BLACK_PAGE, cb=lambda buf: 'LOAD_FINISH' in buf and BLACK_PAGE in buf)
 
+
+def kill_player():
+    sh.killall('omxplayer-loop', _ok_code=[1])
+
 def view_url(url, cb=lambda _: True, force=False):
     global current_browser_url
     logging.info("view_url: %s" % url)
@@ -129,7 +134,7 @@ def view_video(uri):
     arch = machine()
 
     if arch in ('armv6l', 'armv7l'):
-        player_args = ['omxplayer', uri]
+        player_args = ['omxplayer-loop', uri]
         player_kwargs = {'o': settings['audio_output'], '_bg': True, '_ok_code': [0, 124]}
         player_kwargs['_ok_code'] = [0, 124]
     else:
@@ -189,7 +194,7 @@ class DirectoryThread(threading.Thread):
             while not self.__stop.isSet():            
                 logging.info("worker still waiting %d seconds for %s" % (currentEntryDuration, file))
                 if currentEntryDuration <= 0: 
-                    sh.killall('omxplayer.bin', _ok_code=[1])
+                    kill_player()
 
                     file = files[num]                
                     mime = get_mimetype(file)
@@ -267,7 +272,7 @@ class Viewer(object):
         if self.worker is not None:
             self.worker.stop()
         browser_clear()
-        sh.killall('omxplayer.bin', _ok_code=[1])
+        kill_player()
         self.currentId = None
         self.currentDirectory = None
         self.worker = None
