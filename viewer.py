@@ -203,8 +203,15 @@ class DirectoryThread(threading.Thread):
                             currentEntryDuration = get_setting('webpage_duration', DEFAULT_DURATION, cast=int)
                             with open(file, 'r') as urlfile:
                                 try:
-                                    view_url(urlfile.readlines()[0].replace('\n', ''),force=isNew)                                                        
+                                    line = urlfile.readlines()[0].replace('\n', '')
+                                    prefix = line[:5]
+                                    if prefix == "live:":
+                                        currentEntryDuration = 24*60*60 # large number of seconds
+                                        VideoThread(line[5:]).start()
+                                    else:                                    
+                                        view_url(line, force=isNew)                                                        
                                 except Exception as e:
+                                    currentEntryDuration = 0
                                     logging.error('cannot show text file: %s, error: %s' % (file, e))  
                             isNew = False
                         elif 'video' in mime:
